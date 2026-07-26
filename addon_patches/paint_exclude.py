@@ -118,29 +118,95 @@ def exclude_vertices(sel_vindexs, obj):
         sel_vindexs = sel_vindexs - exclude_vindexs
     return sel_vindexs
 
-"""
-FUTURE ENHANCEMENT: mark_paint_exclude_group()
+def mark_paint_exclude_group_automated(obj, exclude_patterns=None, distance_threshold=2.0):
+    """
+    Automatically populate PaintExclude vertex group by finding boundary vertices
+    near meshes matching exclusion patterns (e.g., names containing "Concrete").
 
-Once the manual-group patching is validated, build automated detection:
+    Args:
+        obj: Active mesh object (semi-rough, fairway, etc.)
+        exclude_patterns: List of strings to match in mesh names (e.g., ["Concrete", "CartPath"])
+        distance_threshold: Max distance to mark vertex as excluded
 
-1. Walk the mesh's boundary loop
-2. For each boundary vertex, find nearest neighbouring Spline mesh
-3. Check neighbour's material against exclusion list
-4. Populate "PaintExclude" group automatically
+    Returns:
+        Count of vertices marked for exclusion
 
-Recipe usage would then be:
-{
-  "markpaintexclude": {
-    "exclude_materials": ["Concrete", "Water_Base"],
-    "exclude_inset": 2
-  }
-}
+    Usage in recipe via dispatcher:
+    {
+      "markpaintexclude": {
+        "exclude_patterns": ["Concrete"],
+        "distance_threshold": 2.0
+      }
+    }
+    """
+    if exclude_patterns is None:
+        exclude_patterns = ["Concrete"]
 
-This runs as the first entry in a recipe, before paint ops.
+    # Get or create PaintExclude vertex group
+    exclude_group = obj.vertex_groups.get("PaintExclude")
+    if not exclude_group:
+        exclude_group = obj.vertex_groups.new(name="PaintExclude")
 
-Implementation notes:
-- Use distance comparison approach similar to separateblend
-- Reuse addon's build_kdtree_for_object_2d for cart path smoothing
-- Naive nearest-neighbour is O(vertices × candidate objects), acceptable
-  for one boundary during testing, but needs KDTree per candidate for course-wide
-"""
+    # Find all candidate exclusion meshes (by name pattern)
+    scene = obj.id_data  # Get scene from object data
+    candidate_meshes = []
+    for other_obj in scene.objects:
+        if other_obj == obj or other_obj.type != 'MESH':
+            continue
+        # Check if mesh name contains any exclusion pattern
+        if any(pattern.lower() in other_obj.name.lower() for pattern in exclude_patterns):
+            candidate_meshes.append(other_obj)
+
+    if not candidate_meshes:
+        return 0  # No exclusion meshes found
+
+    # For each boundary vertex on active mesh, check distance to candidate meshes
+    excluded_count = 0
+    for vertex in obj.data.vertices:
+        vert_pos = obj.matrix_world @ vertex.co
+
+        # Find minimum distance to any candidate mesh
+        min_distance = distance_threshold
+        for candidate in candidate_meshes:
+            # Simple nearest-vertex search (naive O(n) per vertex, acceptable for boundaries)
+            for other_vert in candidate.data.vertices:
+                other_pos = candidate.matrix_world @ other_vert.co
+                distance = (vert_pos - other_pos).length
+                if distance < min_distance:
+                    min_distance = distance
+
+        # If vertex is within threshold of a candidate mesh, mark for exclusion
+        if min_distance < distance_threshold:
+            exclude_group.add([vertex.index], 1.0, 'REPLACE')
+            excluded_count += 1
+
+    return excluded_count
+
+
+# RECIPE INTEGRATION EXAMPLE:
+# Add this as a new elif branch in the recipe dispatcher (afrod_operators.py WM_OT_readoperations):
+#
+# elif "markpaintexclude" in entry:
+#     config = entry["markpaintexclude"]
+#     exclude_patterns = config.get("exclude_patterns", ["Concrete"])
+#     distance_threshold = config.get("distance_threshold", 2.0)
+#     count = mark_paint_exclude_group_automated(
+#         obj,
+#         exclude_patterns=exclude_patterns,
+#         distance_threshold=distance_threshold
+#     )
+#     print(f"Marked {count} vertices for paint exclusion")
+#
+# Then in recipes, use as first entry before paint operations:
+# [
+#   {
+#     "markpaintexclude": {
+#       "exclude_patterns": ["Concrete"],
+#       "distance_threshold": 2.0
+#     }
+#   },
+#   {
+#     "randomvertexpaintloop": {...}
+#   },
+#   ...
+# ]

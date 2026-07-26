@@ -254,6 +254,26 @@
             "description": "Number of erosion passes"
           }
         }
+      },
+      "markpaintexclude": {
+        "type": "object",
+        "description": "Automatically mark boundary vertices near exclusion meshes (e.g., Concrete). Must run as first entry before paint operations.",
+        "properties": {
+          "exclude_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ["Concrete"],
+            "description": "List of strings to match in mesh names (case-insensitive). E.g., ['Concrete', 'CartPath']"
+          },
+          "distance_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "default": 2.0,
+            "description": "Max distance to mark vertex as excluded"
+          }
+        }
       }
     }
   },

@@ -223,6 +223,52 @@ These operations have no documented schema — refer to panel controls in the ad
 
 ## Special Operations
 
+### markpaintexclude
+Automatically mark boundary vertices for exclusion from paint operations by finding vertices near meshes matching specified names (e.g., "Concrete", "CartPath").
+
+**Must run as the first entry in a recipe** before any paint operations.
+
+**Keys:**
+- `exclude_patterns`: array of strings to match in mesh names (case-insensitive). Default: `["Concrete"]`
+- `distance_threshold`: numeric max distance to mark vertex as excluded. Default: `2.0`
+
+**How it works:**
+1. Scans scene for meshes with names containing any pattern (e.g., "Concrete")
+2. For each vertex on the active mesh, finds minimum distance to any candidate mesh
+3. If distance < threshold, marks vertex in "PaintExclude" vertex group
+4. Subsequent paint operations respect the exclusion group (with patch installed)
+
+**Example:**
+```json
+{
+  "markpaintexclude": {
+    "exclude_patterns": ["Concrete", "CartPath"],
+    "distance_threshold": 2.5
+  }
+}
+```
+
+**Example recipe with markpaintexclude:**
+```json
+[
+  {
+    "markpaintexclude": {
+      "exclude_patterns": ["Concrete"],
+      "distance_threshold": 2.0
+    }
+  },
+  {
+    "randomvertexpaintloop": {
+      "vertex_paint_type": "red",
+      "paint_strength": 1.0,
+      "paint_loop_inset": 0,
+      "random_amt": 0.0,
+      "skip_longest_loop": false
+    }
+  }
+]
+```
+
 ### erosion
 Erosion operator (requires community patch). Applies the erosion algorithm configured in `scene.opcd_erosion_props`.
 

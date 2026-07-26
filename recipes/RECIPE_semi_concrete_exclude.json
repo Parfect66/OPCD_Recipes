@@ -1,5 +1,11 @@
 [
   {
+    "markpaintexclude": {
+      "exclude_patterns": ["Concrete"],
+      "distance_threshold": 2.0
+    }
+  },
+  {
     "randomvertexpaintloop": {
       "vertex_paint_type": "red",
       "paint_strength": 1.0,
