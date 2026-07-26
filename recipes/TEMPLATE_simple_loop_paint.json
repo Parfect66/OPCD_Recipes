@@ -13,7 +13,7 @@
       "vertex_paint_type": "red",
       "paint_strength": 0.5,
       "random_amt": 0.0,
-      "grow_mode": "normal",
+      "grow_mode": "NORMAL",
       "grow_repeat": 1
     }
   }
