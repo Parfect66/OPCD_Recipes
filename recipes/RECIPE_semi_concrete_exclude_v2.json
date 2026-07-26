@@ -1,0 +1,26 @@
+[
+  {
+    "markpaintexclude": {
+      "exclude_patterns": ["Concrete"],
+      "distance_threshold": 2.0
+    }
+  },
+  {
+    "randomvertexpaintloop": {
+      "vertex_paint_type": "red",
+      "paint_strength": 1.0,
+      "paint_loop_inset": 0,
+      "random_amt": 1.0,
+      "skip_longest_loop": false
+    }
+  },
+  {
+    "growcolor": {
+      "vertex_paint_type": "red",
+      "paint_strength": 0.5,
+      "random_amt": 0.0,
+      "grow_mode": "NORMAL",
+      "grow_repeat": 1
+    }
+  }
+]
