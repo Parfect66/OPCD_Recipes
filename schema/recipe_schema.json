@@ -1,0 +1,266 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OPCD Recipe Schema",
+  "description": "Schema for OPCD Mesh Editing Tools recipe files. Each recipe is an array of operation objects.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "minProperties": 1,
+    "maxProperties": 1,
+    "additionalProperties": false,
+    "properties": {
+      "bunkeredit": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "bunkereditlip": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "bunkereditangle": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "widenbunkerinterior": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "flattenbunker": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "addpotwall": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "smoothmesh": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "subdividemesh": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "zshiftmesh": {
+        "type": "object",
+        "properties": {
+          "z_shift": {
+            "type": "number",
+            "description": "Z-axis shift amount. Always use leading zero: 0.5, not .5"
+          }
+        }
+      },
+      "fillvertexpaint": {
+        "type": "object",
+        "required": [
+          "vertex_paint_type",
+          "paint_strength",
+          "paint_loop_inset",
+          "random_amt"
+        ],
+        "properties": {
+          "vertex_paint_type": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black", "white"],
+            "description": "Color to paint"
+          },
+          "paint_strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Paint opacity (0.0-1.0)"
+          },
+          "paint_loop_inset": {
+            "type": "number",
+            "description": "Inset amount from boundary. Fills cumulatively inward from this inset."
+          },
+          "random_amt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Randomization amount (0.0-1.0)"
+          }
+        }
+      },
+      "randomvertexpaintloop": {
+        "type": "object",
+        "required": [
+          "vertex_paint_type",
+          "paint_strength",
+          "paint_loop_inset",
+          "random_amt",
+          "skip_longest_loop"
+        ],
+        "properties": {
+          "vertex_paint_type": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black", "white"],
+            "description": "Color to paint"
+          },
+          "paint_strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Paint opacity (0.0-1.0)"
+          },
+          "paint_loop_inset": {
+            "type": "number",
+            "description": "Discrete ring to paint at this inset"
+          },
+          "random_amt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Randomization amount (0.0-1.0)"
+          },
+          "skip_longest_loop": {
+            "type": "boolean",
+            "description": "false=outer boundary, true=inner hole loop (for meshes with interior holes)"
+          }
+        }
+      },
+      "growcolor": {
+        "type": "object",
+        "required": [
+          "paint_strength",
+          "grow_repeat"
+        ],
+        "properties": {
+          "paint_strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Blend/feather strength per pass"
+          },
+          "grow_repeat": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of grow passes"
+          }
+        }
+      },
+      "slopevertexpaint": {
+        "type": "object",
+        "required": [
+          "vertex_paint_type",
+          "paint_strength"
+        ],
+        "properties": {
+          "vertex_paint_type": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black", "white"]
+          },
+          "paint_strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "changecolors": {
+        "type": "object",
+        "required": [
+          "from_color",
+          "to_color"
+        ],
+        "properties": {
+          "from_color": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black", "white"],
+            "description": "Source color to replace"
+          },
+          "to_color": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black", "white"],
+            "description": "Target color"
+          }
+        }
+      },
+      "swapcolors": {
+        "type": "object",
+        "required": [
+          "color_a",
+          "color_b"
+        ],
+        "properties": {
+          "color_a": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black", "white"]
+          },
+          "color_b": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black", "white"]
+          }
+        }
+      },
+      "randomslideloop": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "straightenloops": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "spaceloops": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "loopcut": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "meshblendjoin": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "meshblendseparate": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "meshblendjoinpermanent": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "separatemesh": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "invertselection": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "addblendinset": {
+        "$ref": "#/definitions/operationBase"
+      },
+      "renamematerial": {
+        "type": "object",
+        "required": [
+          "material_name"
+        ],
+        "properties": {
+          "material_name": {
+            "type": "string",
+            "description": "New name for the material"
+          }
+        }
+      },
+      "zshiftloop": {
+        "type": "object",
+        "required": [
+          "z_shift"
+        ],
+        "properties": {
+          "z_shift": {
+            "type": "number",
+            "description": "Z-axis shift amount for loop"
+          }
+        }
+      },
+      "erosion": {
+        "type": "object",
+        "description": "Erosion operator (requires community patch). Reads scene.opcd_erosion_props.",
+        "properties": {
+          "erosion_strength": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Erosion effect strength"
+          },
+          "erosion_iterations": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of erosion passes"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "operationBase": {
+      "type": "object",
+      "description": "Generic operation - properties depend on the specific operator"
+    }
+  }
+}

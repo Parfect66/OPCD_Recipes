@@ -1,0 +1,17 @@
+[
+  {
+    "randomvertexpaintloop": {
+      "vertex_paint_type": "green",
+      "paint_strength": 1.0,
+      "paint_loop_inset": 2,
+      "random_amt": 1.0,
+      "skip_longest_loop": false
+    }
+  },
+  {
+    "growcolor": {
+      "paint_strength": 0.5,
+      "grow_repeat": 1
+    }
+  }
+]

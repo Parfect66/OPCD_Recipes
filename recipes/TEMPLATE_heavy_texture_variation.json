@@ -1,0 +1,55 @@
+[
+  {
+    "comment": "Heavy texture-variation pattern for deep/rough meshes. Fill base → sparse random black → growcolor passes with decreasing strength."
+  },
+  {
+    "fillvertexpaint": {
+      "vertex_paint_type": "blue",
+      "paint_strength": 1.0,
+      "paint_loop_inset": 0,
+      "random_amt": 0.0
+    }
+  },
+  {
+    "randomvertexpaintloop": {
+      "vertex_paint_type": "black",
+      "paint_strength": 1.0,
+      "paint_loop_inset": 1,
+      "random_amt": 0.3,
+      "skip_longest_loop": false
+    }
+  },
+  {
+    "growcolor": {
+      "paint_strength": 1.0,
+      "grow_repeat": 1
+    }
+  },
+  {
+    "growcolor": {
+      "paint_strength": 0.3,
+      "grow_repeat": 1
+    }
+  },
+  {
+    "growcolor": {
+      "paint_strength": 0.2,
+      "grow_repeat": 1
+    }
+  },
+  {
+    "randomvertexpaintloop": {
+      "vertex_paint_type": "black",
+      "paint_strength": 1.0,
+      "paint_loop_inset": 2,
+      "random_amt": 0.2,
+      "skip_longest_loop": false
+    }
+  },
+  {
+    "growcolor": {
+      "paint_strength": 0.5,
+      "grow_repeat": 1
+    }
+  }
+]
