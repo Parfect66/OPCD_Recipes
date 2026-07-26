@@ -1,8 +1,5 @@
 [
   {
-    "comment": "Heavy texture-variation pattern for deep/rough meshes. Fill base → sparse random black → growcolor passes with decreasing strength."
-  },
-  {
     "fillvertexpaint": {
       "vertex_paint_type": "blue",
       "paint_strength": 1.0,

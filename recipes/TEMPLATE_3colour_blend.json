@@ -1,8 +1,5 @@
 [
   {
-    "comment": "Hard-banded red/blue/black rings on a green. Insets are placeholders - tune against actual mesh loop count first."
-  },
-  {
     "randomvertexpaintloop": {
       "vertex_paint_type": "red",
       "paint_strength": 1.0,
