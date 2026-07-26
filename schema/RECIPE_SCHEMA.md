@@ -74,14 +74,20 @@ Paints only the **single discrete ring** at `paint_loop_inset`. Use this for har
 Softens and blends hard-painted edges by diffusing colour across neighbouring vertices. Use after `randomvertexpaintloop` for a soft transition.
 
 **Required keys:**
+- `vertex_paint_type`: `red`, `green`, `blue`, or `black` (color context)
 - `paint_strength`: 0.0–1.0 (blend intensity per pass)
+- `random_amt`: 0.0–1.0 (randomization in blend)
+- `grow_mode`: string (e.g., `"normal"`)
 - `grow_repeat`: integer ≥ 1 (number of passes)
 
 **Example:**
 ```json
 {
   "growcolor": {
+    "vertex_paint_type": "red",
     "paint_strength": 0.5,
+    "random_amt": 0.0,
+    "grow_mode": "normal",
     "grow_repeat": 1
   }
 }

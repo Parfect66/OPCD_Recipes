@@ -114,15 +114,33 @@
       "growcolor": {
         "type": "object",
         "required": [
+          "vertex_paint_type",
           "paint_strength",
+          "random_amt",
+          "grow_mode",
           "grow_repeat"
         ],
         "properties": {
+          "vertex_paint_type": {
+            "type": "string",
+            "enum": ["red", "green", "blue", "black"],
+            "description": "Color type (for operation context)"
+          },
           "paint_strength": {
             "type": "number",
             "minimum": 0,
             "maximum": 1,
             "description": "Blend/feather strength per pass"
+          },
+          "random_amt": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Randomization amount"
+          },
+          "grow_mode": {
+            "type": "string",
+            "description": "Growth mode (e.g., 'normal')"
           },
           "grow_repeat": {
             "type": "integer",
