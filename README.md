@@ -158,6 +158,8 @@ See `addon_patches/paint_exclude.py` for code and validation test plan.
 ## Blender Scripts
 
 ### Culvert builder (culvert_blend.py)
+**Fallback only.** Prefer the `opcd-feature-blend` skill below. Use this script when Claude can't reach your Blender, e.g. from a cloud session: it's a paste-into-Blender version, with no verify step and no join into the Concrete mesh.
+
 Builds a precast concrete pipe culvert under a cart path and blends the OPCD terrain around it. The default is a 600 mm bore with raked-end headwalls and aprons at both ends.
 
 1. Save the .blend, then snap the 3D cursor to the ground at the culvert **outlet**.
