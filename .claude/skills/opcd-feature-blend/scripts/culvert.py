@@ -26,7 +26,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.09.30-2"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.09.30-3"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box")
 

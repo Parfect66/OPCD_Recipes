@@ -12,7 +12,7 @@ mesh** so it exports with the course. It works like `procedural-building-blender
 - a shared library (the kit) plus one **re-runnable job script per course**;
 - runs in a **background Blender**, never in the user's open file;
 - **test renders** you read back and compare;
-- a **final** run saves a *new* `.blend` and refuses to overwrite.
+- a **final** run saves `changed_blend.blend`, and never overwrites or deletes an earlier one.
 
 The geometry is done by the bundled, tested kit. Don't hand-write bmesh code for steps
 it covers. It already handles seams opening between meshes, Boolean failures on open
@@ -29,8 +29,9 @@ terrain sheets, low banks, and UV/colour-attribute mismatches on join.
   with `Test-Path` and ask if it's missing. OPCD courses are 4.5 files. **Never run a
   course job in Blender 5.x**: saving would upgrade the file.
 - **Test renders and reports:** the session scratchpad.
-- **Final output:** `OUT_BLEND` next to the course `.blend`, e.g. `meloneras_1_2_culverts.blend`.
-  Previews and `culvert_report.json` go in `culvert_previews\` beside it.
+- **Final output:** `changed_blend.blend` next to the course `.blend` (the job's
+  `OUT_BLEND`). If one already exists, it is renamed to `changed_blend_01.blend`,
+  `_02` ... first. Previews and `culvert_report.json` go in `culvert_previews\` beside it.
 
 ### Install or update the kit (check at the start of every session)
 
@@ -101,8 +102,9 @@ copy in place: change the skill's `scripts\` and re-copy.
    & "...\Blender 4.5\blender.exe" -b --python "...\opcd_feature_kit\culvert_job.py" -- `
      "<job.py>" final "<OUT_BLEND folder>\culvert_previews"
    ```
-   It refuses to overwrite `OUT_BLEND`, and it won't save if any culvert fails verify. Tell
-   the user to open the new file. Their open Blender still shows the old one.
+   An earlier `changed_blend.blend` is kept as `changed_blend_NN.blend`. Nothing is
+   saved if any culvert fails verify. Tell the user to open the new file. Their open
+   Blender still shows the old one.
 6. **Record** the course job path, `.blend` paths and Blender exe in project memory.
 
 ### Acting on verify

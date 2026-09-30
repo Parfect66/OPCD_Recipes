@@ -6,7 +6,8 @@ entry here and re-running - never hand-patch a scene. Units: metres (1 BU = 1 m)
 """
 
 BLEND = r"H:\Course\Support Files\Blender\course_1_0.blend"           # read only, never saved
-OUT_BLEND = r"H:\Course\Support Files\Blender\course_1_0_culverts.blend"  # final run writes here (must not exist)
+OUT_BLEND = r"H:\Course\Support Files\Blender\changed_blend.blend"  # final run writes here; an existing
+                                                                      # one is renamed changed_blend_01 ... first
 RENDER_ENGINE = "CYCLES"   # or "BLENDER_WORKBENCH" (faster on a GPU machine)
 
 CULVERTS = [

@@ -7,7 +7,9 @@ test   opens the job's BLEND read-only, plans/builds/blends/verifies every culve
        renders review PNGs (<name>_Inlet / _Outlet / _Overview) and writes
        <out_dir>/culvert_report.json. Nothing is saved.
 final  does the same, joins each culvert into its Concrete mesh and saves the
-       result to the job's OUT_BLEND (refuses to overwrite). Previews and the
+       result to the job's OUT_BLEND (default: changed_blend.blend next to BLEND).
+       An existing OUT_BLEND is never overwritten: it is renamed to
+       changed_blend_01.blend, _02 ... first. Previews and the
        report go to <out_dir> (normally next to OUT_BLEND). Run it WITHOUT
        --factory-startup so the OPCD addon is loaded and its scene data round-trips.
 
@@ -32,16 +34,24 @@ import culvert as C  # noqa: E402
 PLAN_KEYS = ("kind", "span", "rise", "bearing", "inlet", "outlet", "flow", "asset", "cursor_is")
 
 
+def _keep_previous(path):
+    """Rename an existing output to <stem>_01.blend, _02 ... (never overwrite or delete)."""
+    stem = path[:-6]
+    n = 1
+    while os.path.exists(f"{stem}_{n:02d}.blend"):
+        n += 1
+    new = f"{stem}_{n:02d}.blend"
+    os.replace(path, new)
+    return new
+
+
 def run(job_path, mode, out_dir):
     job = runpy.run_path(job_path)
     blend = job["BLEND"]
-    out_blend = job.get("OUT_BLEND") or blend[:-6] + "_culverts.blend"
+    out_blend = job.get("OUT_BLEND") or os.path.join(os.path.dirname(blend), "changed_blend.blend")
     os.makedirs(out_dir, exist_ok=True)
-    if mode == "final":
-        if os.path.exists(out_blend):
-            raise SystemExit(f"REFUSED: {out_blend} already exists - pick a new OUT_BLEND")
-        if os.path.abspath(out_blend) == os.path.abspath(blend):
-            raise SystemExit("REFUSED: OUT_BLEND must differ from BLEND")
+    if mode == "final" and os.path.abspath(out_blend) == os.path.abspath(blend):
+        raise SystemExit("REFUSED: OUT_BLEND must differ from BLEND")
     bpy.ops.wm.open_mainfile(filepath=blend)
     report = {"blender": bpy.app.version_string, "blend": blend, "mode": mode, "culverts": {}}
     if not bpy.app.version_string.startswith("4.5"):
@@ -79,6 +89,8 @@ def run(job_path, mode, out_dir):
         for pid in T.load_state():
             C.discard_backups(pid)
         if all_ok or job.get("SAVE_EVEN_IF_FAILED"):
+            if os.path.exists(out_blend):
+                report["previous_kept_as"] = _keep_previous(out_blend)
             bpy.ops.wm.save_as_mainfile(filepath=out_blend, copy=True)
             report["saved"] = out_blend
         else:
