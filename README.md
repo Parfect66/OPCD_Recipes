@@ -21,6 +21,8 @@ OPCD_Recipes/
 │   └── RECIPE_SCHEMA.md        # Full operator reference
 ├── addon_patches/              # Addon patches (e.g., PaintExclude)
 │   └── paint_exclude.py        # Vertex-group exclusion for paint ops
+├── .claude/skills/
+│   └── opcd-feature-blend/     # Claude skill: add culverts etc. via blender-mcp and blend into OPCD meshes
 ├── blender_scripts/            # Standalone Blender 4.5 scripts (Run Script)
 │   └── culvert_blend.py        # Pipe culvert + headwalls + terrain blend at the 3D cursor
 ├── validation/                 # Recipe validation tools
@@ -228,3 +230,12 @@ Paint operators (`fillvertexpaint`, `randomvertexpaintloop`, `growcolor`, etc.) 
 - **Paint excluded unwanted areas** → Use `PaintExclude` vertex group to mark boundaries
 
 See `docs/TROUBLESHOOTING.md` for more.
+
+## Claude Skill: opcd-feature-blend
+
+`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features (culverts first) to an OPCD V4 course `.blend`. It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
+
+- **Job script:** each course gets a re-runnable script, e.g. `Blender Scripts\<Course>\<course>_culverts.py`, built from `scripts/templates/`.
+- **Background runs:** the job runs in a background Blender 4.5 via `scripts/culvert_job.py`, never in the open file. `test` mode renders review PNGs; `final` mode saves a new `.blend` and refuses to overwrite.
+- **Kit location:** the kit is copied to `Blender Scripts\opcd_feature_kit\` on first use.
+- **Checking the kit:** run `blender -b --factory-startup --python scripts/selftest.py -- <out_dir>`.
