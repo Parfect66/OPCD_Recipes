@@ -50,6 +50,18 @@ existed. Re-running the job on kit -6 or later also bridges any dip in path 356 
 barrel. Review the renders and `deck_fill_m` before accepting a re-run, or add
 `"deck": False` to its overrides to reproduce the approved result exactly.
 
+**Current work: `meloneras_1.blend` (from 30 Sep 2026)**
+- Source: `H:\Meloneras_Latest\Support Files\Blender\meloneras_1.blend`. Output:
+  `…\Blender\changed_blend.blend`. Test renders: `…\Blender\culvert_test\`.
+- The job now points at this file. **One culvert at a time**, at the user's request.
+- In this file cart path 356 is `Spline_path100_piece1_*_Concrete_-_Mesh`.
+- `Meloneras_box_01` is **not** in the job. Its fixed `at` from `meloneras_latest-2`
+  gave an inlet bed 1.7 m higher on this file (19.99 m against 18.30 m), and the headwall
+  came out too tall. Redo it later with a fresh cursor on this file.
+- `Meloneras_pipe_01` (in progress): 1.0 m corrugated steel pipe, inlet at the saved
+  cursor, 0.7 yd from path `Spline_path100_piece1_3`. The first test exposed the
+  deck-taper bug, fixed in kit -7.
+
 **Open to-dos**
 - [ ] Lower the **Unity terrain**: after importing the new meshes into Unity, run
   **Lower terrain under meshes** over the culvert. Then check that no terrain shows in
