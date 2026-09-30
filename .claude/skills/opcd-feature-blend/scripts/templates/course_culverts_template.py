@@ -9,6 +9,7 @@ BLEND = r"H:\Course\Support Files\Blender\course_1_0.blend"           # read onl
 OUT_BLEND = r"H:\Course\Support Files\Blender\changed_blend.blend"  # final run writes here; an existing
                                                                       # one is renamed changed_blend_01 ... first
 RENDER_ENGINE = "CYCLES"   # or "BLENDER_WORKBENCH" (faster on a GPU machine)
+HIDE_IN_RENDERS = []       # e.g. ["Terrain"]: reference meshes to leave out of review renders
 
 CULVERTS = [
     dict(

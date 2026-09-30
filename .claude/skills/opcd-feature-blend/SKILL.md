@@ -58,6 +58,12 @@ copy in place: change the skill's `scripts\` and re-copy.
   modelled **1 yard** deep behind each mouth and then capped.
 - `Lake`/`Creek` meshes are flat water and are **left alone** by default. Ask if one is in
   the zone.
+- A course `.blend` may hold a hidden **`Terrain`** mesh (2049 × 2049 = 4,198,401 verts): a
+  copy of the Unity terrain heightmap. It has no surface keyword, so the kit never edits it,
+  but it still renders and shows up as grey ground filling the mouths. Put it in the job's
+  `HIDE_IN_RENDERS`. When the user edits the terrain in Unity, tell them to lower the Unity
+  terrain around both mouths and channels below the new invert, because in GSPro it
+  would otherwise fill the culvert.
 - Library assets: ask at the start of a session whether a library `.blend` should be used,
   and where it is. Procedural is the default.
 
