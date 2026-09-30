@@ -13,6 +13,7 @@ import math
 import os
 import sys
 
+import numpy as np
 import bpy  # noqa: I001 (bpy first so the pip `bpy` module exposes bmesh)
 import bmesh
 
@@ -162,7 +163,9 @@ def deck_near_path_test(out_dir, do_render=False):
     con = bpy.data.objects["Concrete_T"]
     z_before = {(round(v.co.x, 3), round(v.co.y, 3)): v.co.z for v in con.data.vertices}
     bpy.context.scene.cursor.location = (0.3, -2.2, 0.0)       # 0.7 m south of the path edge
-    pid = C.plan_culvert(kind="corrugated", span=1.0, cursor_is="inlet")
+    # the cursor here is on the bank, not in a ditch, so take the old "lowest ground" invert;
+    # this test is about the deck next to a path
+    pid = C.plan_culvert(kind="corrugated", span=1.0, cursor_is="inlet", mouth_invert="lowest")
     plan = T.load_state()[pid]
     C.build(pid)
     C.backup(pid, file_copy=False)
@@ -301,13 +304,38 @@ def main(out_dir, do_render=True):
     assert abs(kp["axis"][1] - 1) < 0.05, f"outlet mode axis should point +Y, got {kp['axis']}"
     assert abs(kp["ends"]["out"]["mouth"][1] - 3.8) < 1e-6 and kp["ends"]["in"]["mouth"][1] < -1.5, kp["ends"]
     assert kp["fall"] > 0, kp["fall"]
+    # the cursor is the reference: an inlet mouth's invert is the ground right at the cursor
+    # (in the ditch upstream, so no minimum-fall adjustment applies to it)
+    bpy.context.scene.cursor.location = (0.3, -5.5, 0.0)
+    k2 = C.plan_culvert(kind="pipe", span=T.mm(600), cursor_is="inlet")
+    z_cur = T.HeightSampler(T.surface_meshes()).height(0.3, -5.5)
+    inv = T.load_state()[k2]["ends"]["in"]["invert"]
+    assert abs(inv - z_cur) < 1e-4, f"inlet invert {inv} should be the ground at the cursor {z_cur}"
+    # ...and the ground in front of it is levelled to apron height (the pad)
+    C.build(k2)
+    C.backup(k2, file_copy=False)
+    C.blend(k2)
+    e = T.load_state()[k2]["ends"]["in"]
+    pp = T.load_state()[k2]["params"]
+    v_end = C.mouth_dims("pipe", T.mm(600), T.mm(600), e["top_rel"], pp)["v_end"]
+    samp = T.HeightSampler(T.surface_meshes())
+    for off_u in (-0.3, 0.0, 0.3):
+        q = (np.array(e["mouth"]) + np.array(e["outward"]) * (v_end + 0.6)
+             + np.array([e["outward"][1], -e["outward"][0]]) * off_u)
+        zq = samp.height(*q)
+        assert abs(zq - (inv - 0.02)) < 0.05, f"pad not level at {q}: {zq} vs {inv - 0.02}"
+    assert C.verify(k2), T.load_state()[k2]["verify"]
+    C.restore(k2)
+    print("CURSOR REFERENCE + PAD OK")
     bpy.context.scene.cursor.location = (0.3, 0.2, 0.6)
+    kind_ids = []
     for kind in ("corrugated", "arch", "box"):
         k = C.plan_culvert(kind=kind, span=T.mm(900) if kind != "corrugated" else T.mm(600), bearing=0)
         C.build(k)
+        kind_ids.append(k)
     if do_render:
         # separate the extra kinds so they are visible side by side
-        for i, k in enumerate(("C03", "C04", "C05")):
+        for i, k in enumerate(kind_ids):
             for r in ("IN",):
                 o = bpy.data.objects[f"CULVERT_{k}_{r}"]
                 o.location.x += (i + 1) * 3.2

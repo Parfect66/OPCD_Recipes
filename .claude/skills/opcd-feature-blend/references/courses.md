@@ -58,9 +58,18 @@ barrel. Review the renders and `deck_fill_m` before accepting a re-run, or add
 - `Meloneras_box_01` is **not** in the job. Its fixed `at` from `meloneras_latest-2`
   gave an inlet bed 1.7 m higher on this file (19.99 m against 18.30 m), and the headwall
   came out too tall. Redo it later with a fresh cursor on this file.
-- `Meloneras_pipe_01` (in progress): 1.0 m corrugated steel pipe, inlet at the saved
-  cursor, 0.7 yd from path `Spline_path100_piece1_3`. The first test exposed the
-  deck-taper bug, fixed in kit -7.
+- `Meloneras_pipe_01`: 1.0 m corrugated steel pipe, **final run done 30 Sep 2026** (kit -7)
+  into `…\Blender\changed_blend.blend`.
+  - Inlet at (-873.03, -1146.71), 0.7 yd from path `Spline_path100_piece1_3`, pinned in
+    the job. Outlet at (-878.50, -1141.30). Bearing 314.7°, 8.4 yd.
+  - Settings: `overrides={"band": 1.5, "footing": 1.0}`,
+    `edits={"in_invert": 33.77, "out_invert": 31.68, "in_top_rel": 1.35, "out_top_rel": 1.35,
+    "in_wing_end_rel": [0.3, 0.3], "out_wing_end_rel": [0.3, 0.3]}`.
+  - Verify OK; path not reshaped; deck filled the path by 1.9 m.
+  - The user saw fill mounded round the inlet: its invert had been raised 1.05 m above the
+    ground at the cursor. That led to kit -8, where the cursor ground is the invert and a
+    level pad sits in front. Future builds shouldn't raise inverts.
+- Test 1 exposed the deck-taper bug, fixed in kit -7.
 
 **Open to-dos**
 - [ ] Lower the **Unity terrain**: after importing the new meshes into Unity, run

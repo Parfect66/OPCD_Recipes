@@ -150,9 +150,11 @@ Local frame: origin = invert on the headwall front face; +Y outward into the cha
    stops falling steeply (the toe) and takes the lowest point within 1.5 m of it. It
    deliberately does *not* take the lowest point in the search distance, which on a
    falling ditch would be 15 m away.
-   For a mouth given as a point (cursor, empty or coordinates), the bed is the lowest
-   ground at the point or up to 1.5 m in front of it. So a cursor dropped on the foot of
-   the bank still gets the channel level.
+   For a mouth given as a point (cursor, empty or coordinates), **the point is the
+   reference**: the invert is the ground right at it, and the structure builds up from
+   there. Nothing is filled in front of the mouth to meet a raised apron (the user's rule,
+   from the Meloneras pipe). `mouth_invert="lowest"` restores the old rule: the lowest ground
+   within 0.75 m or up to 1.5 m in front.
 3. **Mouth position.** Walking back from the bed, the first point where the bank is at
    least opening + `cover_min` high becomes the headwall *back* face. The front face is
    one wall thickness outward. If the bank never gets that high, a warning is raised and
@@ -189,6 +191,10 @@ flow=None, asset=None, cursor_is="crossing", **overrides)`. `cursor_is` is `cros
 | `max_edge` | 0.35 | densify target near the feature |
 | `smooth` | 4 | Laplacian passes (0 = off) |
 | `search` | 15 | how far either side of the cursor to look for the bed |
+| `mouth_invert` | `"point"` | a mouth given as a point: invert at the ground right there (`"lowest"` = the old lowest-nearby rule) |
+| `pad` | True | level pad in front of each mouth at apron level (cut and fill), so the structure sits on flat ground |
+| `pad_len` | 1.0 | m the pad runs on past the apron / wing ends |
+| `pad_fade` | 1.5 | m over which the pad blends back into the natural ground |
 | `deck` | True | bridge a false dip in the surface over the barrel (fill only) |
 | `deck_reach` | 6.0 | m beyond the headwall half-width, each side, to find the undipped road |
 | `deck_step` | 0.5 | sampling step of the deck profile |

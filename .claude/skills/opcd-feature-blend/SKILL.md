@@ -54,6 +54,13 @@ copy in place: change the skill's `scripts\` and re-copy.
   A common case is the cursor at the outlet in the run-off, with the culvert under the
   nearby cart path (`cursor_is="outlet"`). The run-off is usually a depression in the
   ground, and **the user identifies it**, so confirm detected channels.
+- **The cursor is the reference.** When it marks a mouth, the invert is the ground right at
+  the cursor, and the headwall, wings and apron build up from there. A level pad
+  (`pad`, on by default) flattens the ground over the apron and about 1 m beyond it to apron
+  level, so the structure sits on flat ground. Don't raise a mouth's invert above the ground
+  at the cursor with `edits`: the Meloneras pipe showed that this mounds fill round the
+  headwall. If a mouth's headwall comes out too tall, move the cursor rather than raising
+  the invert.
 - Culverts are **concrete**, joined into the Concrete mesh with its material. The barrel is
   modelled **1 yard** deep behind each mouth and then capped.
 - **Passages** (`kind="underpass"` for a box under a motorway or road embankment,
