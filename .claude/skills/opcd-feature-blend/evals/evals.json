@@ -1,0 +1,30 @@
+{
+  "skill_name": "opcd-feature-blend",
+  "note": "Run these in a local Claude session with blender-mcp connected and the user's test .blend open. The geometry itself is covered headless by scripts/selftest.py.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I've put the cursor on the cart path on hole 4 where the ditch runs under it. Add a 600mm concrete pipe culvert and blend it into the meshes.",
+      "expected_output": "Asks for the library location at session start; runs scene_report; plans a pipe (span 0.6) and asks the user to confirm the AUTO axis; builds and shows both mouths; backs up, blends, verifies (ok=true); finalises into the nearest Concrete mesh only after approval.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "stick a 4ft stone arch under the bank at the cursor, the burn runs roughly north east to south west. headwalls need to sit flush with the bank",
+      "expected_output": "Uses kind='arch', span=T.ft(4), bearing about 225 (flow NE to SW) or asks which way the water flows; mentions the arch will read as concrete once joined; checks flush_max_error in verify.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Add a 24 inch corrugated steel pipe at the cursor. I've dropped CULVERT_IN and CULVERT_OUT empties at each end of the run-off so use those.",
+      "expected_output": "plan_culvert(kind='corrugated', span=T.inch(24), inlet='CULVERT_IN', outlet='CULVERT_OUT'); reports the fall between the empties and warns if it is less than 1 in 100.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "C01's outlet headwall looks too tall, knock a foot off it and redo the blend",
+      "expected_output": "Uses restore('C01') (the terrain is already blended), edit_plan('C01', out_top_rel=<current - 0.3048>), then build, backup, blend and verify again; does not hand-edit meshes.",
+      "files": []
+    }
+  ]
+}

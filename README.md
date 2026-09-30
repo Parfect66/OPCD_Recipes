@@ -21,6 +21,8 @@ OPCD_Recipes/
 │   └── RECIPE_SCHEMA.md        # Full operator reference
 ├── addon_patches/              # Addon patches (e.g., PaintExclude)
 │   └── paint_exclude.py        # Vertex-group exclusion for paint ops
+├── .claude/skills/
+│   └── opcd-feature-blend/     # Claude skill: add culverts etc. via blender-mcp and blend into OPCD meshes
 ├── validation/                 # Recipe validation tools
 │   ├── validate_recipes.py     # Validator script (JSON + linting)
 │   └── recipe_schema.json      # Schema reference (symlink or copy)
@@ -209,3 +211,11 @@ Paint operators (`fillvertexpaint`, `randomvertexpaintloop`, `growcolor`, etc.) 
 - **Paint excluded unwanted areas** → Use `PaintExclude` vertex group to mark boundaries
 
 See `docs/TROUBLESHOOTING.md` for more.
+
+## Claude Skill: opcd-feature-blend
+
+`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features (culverts first) at the 3D cursor in a live Blender 4.5 session via [blender-mcp](https://github.com/ahujasid/blender-mcp). It carves and reshapes the surrounding OPCD surface meshes, then joins the feature into the nearest `Concrete` mesh.
+
+- **Install:** Claude Code picks it up automatically when run from this repo. To use it everywhere, copy the folder to `~/.claude/skills/`.
+- **Check the geometry routines:** run `scripts/selftest.py` in a new, empty Blender file, or headless with `blender -b --python .claude/skills/opcd-feature-blend/scripts/selftest.py -- /tmp/out`.
+- **Workflow and safety gates:** see `SKILL.md`.
