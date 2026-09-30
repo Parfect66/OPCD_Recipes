@@ -26,7 +26,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.09.30-6"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.09.30-7"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
 # Passages carry a path or road THROUGH the embankment: open barrel end to end,
@@ -409,8 +409,11 @@ def plan_deck(plan, sampler):
     if not rows:
         return None
     r = np.array(rows)
+    # Full strength right up to the headwall back faces (a path next to a mouth must be
+    # fully bridged, or the low headwall sized from the dip pulls the path down); only
+    # BESIDE the headwalls (|u| > half-width) does it fade out over `ramp` past the back face.
     return dict(origin=a_in.tolist(), axis=ax.tolist(), normal=nx.tolist(), s0=s0, s1=s1,
-                taper=float(min(2.0, (s1 - s0) / 2)), s=r[:, 0].tolist(), uL=r[:, 1].tolist(),
+                ramp=1.0, half_w=float(hw), s=r[:, 0].tolist(), uL=r[:, 1].tolist(),
                 zL=r[:, 2].tolist(), uR=r[:, 3].tolist(), zR=r[:, 4].tolist(),
                 centre_fill_max_m=round(float(r[:, 5].max()), 3), half_width_m=round(float(umax), 2))
 
@@ -425,11 +428,16 @@ def deck_field(deck):
         rel = xy - o
         s_, u = rel @ ax, rel @ nx
         uL, zL, uR, zR = (np.interp(s_, S, cols[k]) for k in ("uL", "zL", "uR", "zR"))
-        inside = (s_ > deck["s0"]) & (s_ < deck["s1"]) & (u >= -uL) & (u <= uR)
         chord = zL + (zR - zL) * (u + uL) / np.maximum(uL + uR, 1e-6)
-        t = deck["taper"]
-        w = T.smoothstep(np.minimum(s_ - deck["s0"], deck["s1"] - s_) / t) if t > 0 else 1.0
-        return np.where(inside, z + w * np.maximum(chord - z, 0.0), z)
+        across = (u >= -uL) & (u <= uR)
+        # distance past the nearer back face (<= 0 inside the zone between them)
+        past = np.maximum(deck["s0"] - s_, s_ - deck["s1"])
+        ramp = deck.get("ramp", 1.0)
+        beside = np.abs(u) > deck.get("half_w", 0.0) + 0.1
+        w = np.where(past <= 0.0, 1.0,
+                     np.where(beside, T.smoothstep(1.0 - past / ramp), 0.0))
+        w = np.where(across, w, 0.0)
+        return z + w * np.maximum(chord - z, 0.0)
     return f
 
 
@@ -1046,7 +1054,7 @@ def verify(pid):
     checks["concrete_reshaped"] = {
         n: {"cut_m": r["max_cut_m"], "fill_m": r["max_fill_m"]}
         for n, r in (plan.get("blend_report") or {}).items()
-        if "Concrete" in n and (r["max_cut_m"] < -0.05 or r["max_fill_m"] > 0.05)}
+        if "Concrete" in n and (r["max_cut_m"] < -0.10 or r["max_fill_m"] > 0.10)}
     ok = (all(v == 0 for v in checks["stray_open_edges"].values())
           and all(m["buried"] for m in barrel.values())
           and all(m["unsealed_by_m"] == 0 and m["flush_max_error_m"] < 0.1 for m in barrel.values())

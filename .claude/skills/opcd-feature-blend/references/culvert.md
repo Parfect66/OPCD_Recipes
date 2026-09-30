@@ -86,8 +86,10 @@ and it is on by default (`deck=True`):
 - **Fill only:** every surface mesh, the Concrete road on top included, is raised to the
   chord where it is below it, and **never lowered**. A real crest is left alone, and the
   meshes stay at or above the Unity terrain, so it can't show through.
-- **Taper:** it blends in over up to 2 m from each back face, so there's no step at the
-  headwalls.
+- **Full strength to the headwalls:** the fill applies in full right up to each headwall
+  back face, so a path running close behind a mouth is fully bridged and the headwall is
+  sized to the path's true level. Only *beside* the headwalls does it fade out, over 1 m
+  past the back face, so there's no step there.
 - **Headwall height:** set from the bridged ground, not the dipped ground.
 - **Report:**
   - plan summary `deck.max_fill_over_barrel_m`;
