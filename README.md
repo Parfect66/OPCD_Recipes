@@ -21,6 +21,8 @@ OPCD_Recipes/
 │   └── RECIPE_SCHEMA.md        # Full operator reference
 ├── addon_patches/              # Addon patches (e.g., PaintExclude)
 │   └── paint_exclude.py        # Vertex-group exclusion for paint ops
+├── blender_scripts/            # Standalone Blender 4.5 scripts (Run Script)
+│   └── culvert_blend.py        # Pipe culvert + headwalls + terrain blend at the 3D cursor
 ├── validation/                 # Recipe validation tools
 │   ├── validate_recipes.py     # Validator script (JSON + linting)
 │   └── recipe_schema.json      # Schema reference (symlink or copy)
@@ -150,6 +152,23 @@ Allows recipes to exclude boundary vertices bordering certain materials (e.g., "
 3. Run paint recipes; excluded vertices stay unpainted
 
 See `addon_patches/paint_exclude.py` for code and validation test plan.
+
+## Blender Scripts
+
+### Culvert builder (culvert_blend.py)
+Builds a precast concrete pipe culvert under a cart path and blends the OPCD terrain around it. The default is a 600 mm bore with raked-end headwalls and aprons at both ends.
+
+1. Save the .blend, then snap the 3D cursor to the ground at the culvert **outlet**.
+2. Open `blender_scripts/culvert_blend.py` in the Scripting workspace. Adjust the CONFIG block if needed: bore, grade, cover, direction mode, texture folder.
+3. Run Script, then read the `Culvert_Report` text block for length, inverts, cover under the path and warnings.
+
+The pipe aims at the nearest cart-path mesh and runs across it. The script then:
+- cuts an outfall ditch in front of each headwall;
+- fills low ground over the barrel to minimum cover;
+- tucks the terrain onto the wall tops;
+- leaves the cart path's footing alone.
+
+The output object is named `Concrete_Culvert_600`, so `markpaintexclude` picks it up. Moved terrain vertices are weighted in a `CulvertBlend` vertex group for follow-up painting.
 
 ## Testing
 
