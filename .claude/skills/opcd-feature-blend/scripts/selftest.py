@@ -79,6 +79,92 @@ def build_scene():
     bpy.context.scene.cursor.location = (0.3, 0.2, 0.6)
 
 
+def embankment(x, y):
+    """Motorway embankment along X: 5 m high, 12 m crest, 1:2 sides; flat ground at 0."""
+    return max(0.0, min(5.0, 5.0 - (abs(y) - 6.0) / 2.0))
+
+
+def build_passage_scene():
+    """Rough ground + a Concrete motorway on the crest + a Concrete cart path running
+    north up to the embankment toe at x = 0 (0.75 m grid, shared borders)."""
+    for ob in list(bpy.data.objects):
+        bpy.data.objects.remove(ob, do_unlink=True)
+    step, half = 0.75, 30.0
+    n = int(2 * half / step)
+
+    def which(xc, yc):
+        if abs(yc) <= 5.25:
+            return "Concrete_Motorway"
+        if abs(xc) <= 1.5 and yc <= -16.5:
+            return "Concrete_Path"
+        return "Rough_E"
+    for name in ("Rough_E", "Concrete_Motorway", "Concrete_Path"):
+        bm = bmesh.new()
+        verts = {}
+        for i in range(n):
+            for j in range(n):
+                xc, yc = -half + (i + 0.5) * step, -half + (j + 0.5) * step
+                if which(xc, yc) != name:
+                    continue
+                q = []
+                for key in ((i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)):
+                    if key not in verts:
+                        x, y = -half + key[0] * step, -half + key[1] * step
+                        verts[key] = bm.verts.new((x, y, embankment(x, y)))
+                    q.append(verts[key])
+                bm.faces.new(q)
+        bm.loops.layers.uv.new("UVMap")
+        me = bpy.data.meshes.new(name)
+        bm.to_mesh(me)
+        bm.free()
+        me.color_attributes.new("Col", 'BYTE_COLOR', 'CORNER')
+        me.materials.append(bpy.data.materials.get(name.split("_")[0]) or bpy.data.materials.new(name.split("_")[0]))
+        bpy.context.scene.collection.objects.link(bpy.data.objects.new(name, me))
+
+
+def passage_test(out_dir, do_render):
+    """Underpass under the motorway embankment, from the crest and from a portal on the path."""
+    build_passage_scene()
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, "selftest_passage.blend"))
+    # 1) cursor on the motorway crest
+    bpy.context.scene.cursor.location = (0.3, 0.2, 5.0)
+    pid = C.plan_culvert(kind="underpass", span=4.0)
+    plan = T.load_state()[pid]
+    assert plan["passage"] and abs(plan["rise"] - 3.0) < 1e-6, plan["rise"]
+    assert abs(abs(plan["axis"][1]) - 1) < 0.05, f"underpass should run N-S, got {plan['axis']}"
+    ys = sorted(e["mouth"][1] for e in plan["ends"].values())
+    assert ys[0] < -6 and ys[1] > 6, f"portals should be off the crest, got {ys}"
+    assert abs(plan["params"]["barrel_depth"] - (plan["length"] / 2 + 0.01)) < 1e-6
+    C.build(pid)
+    ob = bpy.data.objects[f"CULVERT_{pid}_IN"]
+    far = min(v.co.y for v in ob.data.vertices)
+    assert far < -plan["length"] / 2 + 0.05, "passage barrel should reach the midpoint"
+    C.backup(pid, file_copy=False)
+    C.blend(pid)
+    ok = C.verify(pid)
+    chk = T.load_state()[pid]["verify"]
+    assert ok, f"passage verify failed: {chk}"
+    if do_render:
+        T.render_views(out_dir, "04_underpass", C.preview_views(pid), samples=16)
+    C.finalise(pid)
+    # 2) cursor on the cart path at the south portal: axis runs along the path, north
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(out_dir, "selftest_passage.blend"))
+    importlib.reload(T)
+    importlib.reload(C)
+    bpy.context.scene.cursor.location = (0.0, -18.0, 0.0)
+    k = C.plan_culvert(kind="underpass", span=4.0, cursor_is="portal")
+    kp = T.load_state()[k]
+    assert kp["axis"][1] > 0.95, f"portal mode should run north along the path, got {kp['axis']}"
+    assert kp["ends"]["out"]["mouth"][1] > 6, kp["ends"]["out"]
+    assert "along Concrete_Path" in kp["axis_note"], kp["axis_note"]
+    # 3) road tunnel builds (bank is low for it, so it warns)
+    bpy.context.scene.cursor.location = (8.0, 0.2, 5.0)
+    t = C.plan_culvert(kind="tunnel", span=7.0, bearing=0)
+    C.build(t)
+    assert T.load_state()[t]["passage"]
+    print("PASSAGES OK")
+
+
 def seam_gap():
     """Max z difference between Rough and Concrete verts sharing an XY position."""
     def pts(name):
@@ -168,6 +254,7 @@ def main(out_dir, do_render=True):
                 o = bpy.data.objects[f"CULVERT_{k}_{r}"]
                 o.location.x += (i + 1) * 3.2
         render(os.path.join(out_dir, "03_kinds.png"))
+    passage_test(out_dir, do_render)
     print("SELFTEST OK")
 
 

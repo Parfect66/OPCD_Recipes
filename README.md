@@ -235,7 +235,7 @@ See `docs/TROUBLESHOOTING.md` for more.
 
 ## Claude Skill: opcd-feature-blend
 
-`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features (culverts first) to an OPCD V4 course `.blend`. It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
+`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features to an OPCD V4 course `.blend`: culverts (pipe, corrugated, arch, box) and passages (motorway underpass, road tunnel). It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
 
 - **Job script:** each course gets a re-runnable script, e.g. `Blender Scripts\<Course>\<course>_culverts.py`, built from `scripts/templates/`.
 - **Background runs:** the job runs in a background Blender 4.5 via `scripts/culvert_job.py`, never in the open file. `test` mode renders review PNGs; `final` mode saves a new `.blend` and refuses to overwrite.

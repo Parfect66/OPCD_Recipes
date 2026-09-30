@@ -26,9 +26,13 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.09.30-4"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.09.30-5"   # bump on every change; the skill compares it with the installed kit
 
-KINDS = ("pipe", "corrugated", "arch", "box")
+KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
+# Passages carry a path or road THROUGH the embankment: open barrel end to end,
+# floor follows the road grade (no minimum fall), level approach cuttings.
+PASSAGE_KINDS = ("underpass", "tunnel")
+SHAPE = {"underpass": "box", "tunnel": "arch"}   # opening shape used by each passage kind
 
 DEFAULTS = dict(
     wall=0.30,          # headwall and wing wall thickness (m)
@@ -52,11 +56,26 @@ DEFAULTS = dict(
     corr_depth=0.013,
 )
 
+# Per-kind defaults on top of DEFAULTS (overrides still win).
+KIND_DEFAULTS = {
+    # precast box under a motorway / road embankment, e.g. a cart-path underpass
+    "underpass": dict(wall=0.40, footing=0.50, cover_min=0.50, max_top=2.0, apron_thk=0.25,
+                      channel_fade=8.0, band=4.0, search=40.0),
+    # road tunnel portal through a hill or high bank: arched opening, tall portal face
+    "tunnel": dict(wall=0.60, footing=0.80, cover_min=1.0, max_top=3.0, wing_angle=20.0,
+                   apron_thk=0.30, channel_fade=12.0, band=4.0, search=60.0),
+}
+
 
 # ------------------------------------------------------------------ opening shapes
 
 def opening_profile(kind, span, rise, segs):
     """Closed polygon (x, z) of the opening, invert at z=0, centred on x=0."""
+    if kind == "underpass":
+        h = min(0.30, 0.1 * min(span, rise))
+        s = span / 2
+        return [(-s, 0.0), (s, 0.0), (s, rise - h), (s - h, rise), (-s + h, rise), (-s, rise - h)]
+    kind = SHAPE.get(kind, kind)
     if kind in ("pipe", "corrugated"):
         r = span / 2
         return [(r * math.sin(t), r - r * math.cos(t))
@@ -137,7 +156,10 @@ def outline_limits(top_rel, wing_end_rel, p):
             (f, wl, top_rel, True), (f, top_rel, top_rel, True)]
 
 
-def build_mouth_bmesh(kind, span, rise, top_rel, wing_end_rel, p):
+def build_mouth_bmesh(kind, span, rise, top_rel, wing_end_rel, p, barrel_rise=0.0, cap=True):
+    """barrel_rise: floor height change (m) from the back of the headwall to the barrel end
+    (passages slope to meet the other portal's half at the midpoint). cap=False leaves the
+    barrel open (passages)."""
     wall, foot = p["wall"], p["footing"]
     segs = p["segments"] or int(max(16, min(48, round(math.pi * span / 0.08))))
     d = mouth_dims(kind, span, rise, top_rel, p)
@@ -193,13 +215,15 @@ def build_mouth_bmesh(kind, span, rise, top_rel, wing_end_rel, p):
             rings.append(B_in)
         else:
             f = radial.get(y, 1.0)
-            rings.append([V(c[0] + (x - c[0]) * f, y, c[1] + (z - c[1]) * f) for x, z in inner])
+            dz = barrel_rise * (-y - wall) / max(depth - wall, 1e-6)
+            rings.append([V(c[0] + (x - c[0]) * f, y, c[1] + (z - c[1]) * f + dz) for x, z in inner])
     bore = []
     for r0, r1 in zip(rings, rings[1:]):
         bore += ring(r0, r1)
     groups.append((bore, lambda f: Vector((-f.calc_center_median().x, 0, c[1] - f.calc_center_median().z))))
-    cap = bm.faces.new(rings[-1])
-    groups.append(([cap], lambda f: Vector((0, 1, 0))))
+    if cap:
+        cap_face = bm.faces.new(rings[-1])
+        groups.append(([cap_face], lambda f: Vector((0, 1, 0))))
 
     # wing walls
     for sgn in (-1, 1):
@@ -349,16 +373,25 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         "outlet" / "inlet": that mouth. The culvert then runs square across the
         nearest cart path (or along ``bearing``) and the other mouth is found on
         the far side.
+        "portal" (passages; same as "inlet"): one portal. With the cursor on a
+        path (within 3 m of Concrete) the passage runs ALONG that path into the
+        rising ground; otherwise square across the nearest path.
+    kind "underpass" / "tunnel" are passages: see PASSAGE_KINDS.
     flow: None (auto: water runs from the higher bed), or "as_bearing".
     asset: optional ("/path/lib.blend", "ObjectName") to use a library mouth unit.
     """
-    if cursor_is not in ("crossing", "inlet", "outlet"):
-        raise ValueError('cursor_is must be "crossing", "inlet" or "outlet"')
+    if cursor_is not in ("crossing", "inlet", "outlet", "portal"):
+        raise ValueError('cursor_is must be "crossing", "inlet", "outlet" or "portal"')
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}")
-    p = dict(DEFAULTS); p.update(overrides)
-    rise = rise or (span if kind in ("pipe", "corrugated") else (span * 0.75 if kind == "box" else span * 0.8))
-    if kind == "arch" and rise < span / 2:
+    if cursor_is == "portal":
+        cursor_is = "inlet"
+    passage = kind in PASSAGE_KINDS
+    p = dict(DEFAULTS); p.update(KIND_DEFAULTS.get(kind, {})); p.update(overrides)
+    rise = rise or (span if kind in ("pipe", "corrugated") else
+                    span * 0.75 if kind in ("box", "underpass") else
+                    span * 0.7 if kind == "tunnel" else span * 0.8)
+    if SHAPE.get(kind, kind) == "arch" and rise < span / 2:
         rise = span / 2
     T.ensure_object_mode()
     surfaces = T.surface_meshes(exclude=T.WATER_KEYWORDS)
@@ -387,6 +420,19 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         if bearing is not None:
             d = _axis_from_bearing(bearing)
             axis_note = "from given bearing"
+        elif passage and path is not None and path["dist"] <= 3.0:
+            # cursor on the path at a portal: run along the path, into the rising ground
+            t = np.array(path["tangent"])
+            rises = []
+            for sgn in (1, -1):
+                zs = [z for _, z in _profile(sampler, tuple(m), tuple(sgn * t), 0.0, p["search"], 1.0)
+                      if z is not None]
+                rises.append(max(zs) if zs else -1e9)
+            t = t if rises[0] >= rises[1] else -t
+            d = tuple(t if cursor_is == "inlet" else -t)
+            axis_note = (f"AUTO - along {path['name']} from the cursor into the rising ground; "
+                         f"confirm with the user")
+            path = None   # the far portal is found from the crest below, not the path edge
         elif path is not None:
             t = path["tangent"]
             n = np.array([-t[1], t[0]])
@@ -398,8 +444,16 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         else:
             raise RuntimeError("No Concrete mesh within 40 m of the cursor - give a bearing.")
         dv = np.array(d)
-        ref = path["point"] if path is not None else m - dv * (1 if cursor_is == "outlet" else -1) * 3.0
-        c = tuple(m + ((ref - m) @ dv) * dv)  # on the axis, level with the path edge
+        if passage and path is None and bearing is None:
+            # crossing centre = crest of the ground ahead of the portal
+            into = dv if cursor_is == "inlet" else -dv
+            prof = [(s_, z) for s_, z in _profile(sampler, tuple(m), tuple(into), 0.0, p["search"], 0.5)
+                    if z is not None]
+            s_crest = max(prof, key=lambda q: q[1])[0] if prof else 3.0
+            ref = m + into * max(s_crest, 1.0)
+        else:
+            ref = path["point"] if path is not None else m - dv * (1 if cursor_is == "outlet" else -1) * 3.0
+        c = tuple(m + ((ref - m) @ dv) * dv)  # on the axis, level with the path edge / crest
         if cursor_is == "outlet":
             pout = tuple(m)
         else:
@@ -462,21 +516,27 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
 
     ends = {}
     raw = {-1: find_end(-1, pin), 1: find_end(1, pout)}
-    # flow: water runs from the higher bed to the lower
-    if flow == "as_bearing" or (pin and pout) or mouth_mode:
+    # flow: water runs from the higher bed to the lower (passages: no flow, keep the order)
+    if passage or flow == "as_bearing" or (pin and pout) or mouth_mode:
         up, dn = -1, 1
-        if raw[-1]["invert"] < raw[1]["invert"]:
+        if not passage and raw[-1]["invert"] < raw[1]["invert"]:
             warnings.append(f"inlet bed is {raw[1]['invert'] - raw[-1]['invert']:.2f} m LOWER than the outlet - "
                             "water would run the other way; confirm the flow direction or edit the inverts")
     else:
         up, dn = (-1, 1) if raw[-1]["invert"] >= raw[1]["invert"] else (1, -1)
     length = abs(raw[1]["s"] - raw[-1]["s"])
-    if length < 2 * (p["barrel_depth"] + p["wall"]):
+    if not passage and length < 2 * (p["barrel_depth"] + p["wall"]):
         warnings.append(f"mouths only {T.fmt_len(length)} apart - the two ends will overlap; "
                         "give inlet/outlet points or a longer crossing")
     inv_in, inv_out = raw[up]["invert"], raw[dn]["invert"]
     min_fall = length * p["min_fall"]
-    if inv_in - inv_out < min_fall:
+    if passage:
+        # open barrel from each portal to the midpoint, where the two halves meet
+        p["barrel_depth"] = max(length / 2.0, p["wall"] + 0.1) + 0.01
+        if abs(inv_in - inv_out) / max(length, 1e-6) > 0.08:
+            warnings.append(f"floor grade {abs(inv_in - inv_out) / length:.1%} is steep for a road/path - "
+                            "check the portal floor levels")
+    elif inv_in - inv_out < min_fall:
         warnings.append(f"natural fall {inv_in - inv_out:.3f} m < 1:{int(1 / p['min_fall'])} "
                         f"({min_fall:.3f} m): outlet invert lowered to suit, outlet channel will be cut")
         inv_out = inv_in - min_fall
@@ -504,12 +564,17 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         ends[role] = dict(mouth=[mouth[0], mouth[1]], invert=float(inv), outward=list(outward),
                           top_rel=float(top_rel), wing_end_rel=wing_end,
                           bed_distance=abs(e["bed_s"] - s), note=e["note"])
+    if passage:
+        mid = (ends["in"]["invert"] + ends["out"]["invert"]) / 2.0
+        for e in ends.values():
+            e["barrel_rise"] = float(mid - e["invert"])
 
     state = T.load_state()
     pid = f"C{len(state) + 1:02d}"
     while pid in state:
         pid = f"C{int(pid[1:]) + 1:02d}"
-    plan = dict(id=pid, name=name or pid, kind=kind, span=span, rise=rise, params=p, centre=list(c), axis=list(d),
+    plan = dict(id=pid, name=name or pid, kind=kind, passage=passage, span=span, rise=rise, params=p,
+                centre=list(c), axis=list(d),
                 bearing=_bearing(d), axis_note=axis_note, crest_z=zc, length=length,
                 fall=ends["in"]["invert"] - ends["out"]["invert"], ends=ends, warnings=warnings,
                 asset=list(asset) if asset else None, status="planned", objects={}, backup={})
@@ -536,7 +601,8 @@ def summary(pid):
         "outlet": {"invert_m": round(e["out"]["invert"], 3),
                    "top_above_invert_m": round(e["out"]["top_rel"], 3),
                    "xy": [round(v, 2) for v in e["out"]["mouth"]], "how": e["out"]["note"]},
-        "fall": f"{plan['fall']:.3f} m (1 in {plan['length'] / plan['fall']:.0f})" if plan["fall"] > 0 else "NONE",
+        "fall": (f"floor grade {plan['fall'] / plan['length']:+.1%} (end A to end B)" if plan.get("passage") else
+                 f"{plan['fall']:.3f} m (1 in {plan['length'] / plan['fall']:.0f})" if plan["fall"] > 0 else "NONE"),
         "warnings": plan["warnings"],
         "objects": plan["objects"], "backup": plan["backup"],
     })
@@ -590,12 +656,13 @@ def preview_views(pid):
     """
     plan = T.load_state()[pid]
     views = {}
-    for role, label, side in (("in", "Inlet", 1.5), ("out", "Outlet", -1.5)):
+    labels = ("PortalA", "PortalB") if plan.get("passage") else ("Inlet", "Outlet")
+    for role, label, side in (("in", labels[0], 1.5), ("out", labels[1], -1.5)):
         e = plan["ends"][role]
         o = Vector((*e["outward"], 0))
         x = Vector((o.y, -o.x, 0))
         m = Vector((*e["mouth"], e["invert"]))
-        back = max(5.0, 6.0 * plan["span"])
+        back = max(5.0, (2.5 if plan.get("passage") else 6.0) * plan["span"])
         loc = m + o * back + x * side * (back / 4) + Vector((0, 0, 1.2 + plan["rise"]))
         views[label] = (tuple(loc), tuple(m + Vector((0, 0, plan["rise"] * 0.6))), 24)
     a = Vector((*plan["ends"]["in"]["mouth"], plan["ends"]["in"]["invert"]))
@@ -656,7 +723,8 @@ def build(pid):
             ob = _append_asset(plan["asset"], name)
         else:
             bm, dims = build_mouth_bmesh(plan["kind"], plan["span"], plan["rise"], e["top_rel"],
-                                         e["wing_end_rel"], p)
+                                         e["wing_end_rel"], p, barrel_rise=e.get("barrel_rise", 0.0),
+                                         cap=not plan.get("passage"))
             me = bpy.data.meshes.new(name)
             bm.to_mesh(me)
             bm.free()
@@ -770,7 +838,7 @@ def blend(pid, include_water=False):
         m = np.array(e["mouth"])
         v_end = dims["v_end"]
         half = dims["ae"]
-        slope = 0.005 if role == "in" else -0.005
+        slope = 0.0 if plan.get("passage") else (0.005 if role == "in" else -0.005)
 
         def f(xy, z):
             dist, tgt = T.nearest_on_outline(xy, xy_o, tz)
@@ -836,7 +904,7 @@ def verify(pid):
     for role, xy_o, tz, frame, dims in ends:
         e = plan["ends"][role]
         # barrel end, soffit level - must be under ground
-        w = _to_world(frame, 0.0, -plan["params"]["barrel_depth"], plan["rise"])
+        w = _to_world(frame, 0.0, -plan["params"]["barrel_depth"], plan["rise"] + e.get("barrel_rise", 0.0))
         zg = sampler.height(w.x, w.y)
         barrel[role] = {"soffit_m": round(w.z, 3), "ground_m": None if zg is None else round(zg, 3),
                         "buried": zg is not None and zg > w.z + 0.05}
@@ -866,10 +934,17 @@ def verify(pid):
     checks["fall_m"] = round(plan["fall"], 3)
     checks["unity_65k"] = {ob.name: len(ob.data.vertices) for ob in objs if len(ob.data.vertices) > 65535}
     checks["water_meshes_in_zone"] = [w.name for w in water]
+    # A Concrete mesh (cart path, road) that was cut or filled is usually unintended: the
+    # shaping band reached a path the feature doesn't cross. Warning only - passages
+    # legitimately reshape the path running through them.
+    checks["concrete_reshaped"] = {
+        n: {"cut_m": r["max_cut_m"], "fill_m": r["max_fill_m"]}
+        for n, r in (plan.get("blend_report") or {}).items()
+        if "Concrete" in n and (r["max_cut_m"] < -0.05 or r["max_fill_m"] > 0.05)}
     ok = (all(v == 0 for v in checks["stray_open_edges"].values())
           and all(m["buried"] for m in barrel.values())
           and all(m["unsealed_by_m"] == 0 and m["flush_max_error_m"] < 0.1 for m in barrel.values())
-          and plan["fall"] > 0)
+          and (plan.get("passage") or plan["fall"] > 0))
     checks["ok"] = ok
     st = T.load_state()
     st[pid]["verify"] = checks

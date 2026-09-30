@@ -14,11 +14,11 @@ HIDE_IN_RENDERS = []       # e.g. ["Terrain"]: reference meshes to leave out of 
 CULVERTS = [
     dict(
         name="H4_path_outlet",       # used for render / report file names
-        kind="pipe",                 # pipe | corrugated | arch | box
+        kind="pipe",                 # pipe | corrugated | arch | box | underpass | tunnel
         span=0.6,                    # opening width / diameter (m)
         # rise=0.45,                 # box/arch height; pipes = span
-        cursor_is="outlet",          # what `at` marks: crossing | outlet | inlet
-        at=(123.45, -67.89),         # world XY; None = the 3D cursor saved in BLEND
+        cursor_is="outlet",          # what `at` marks: crossing | outlet | inlet | portal (passages)
+        at=(123.45, -67.89),         # world XY; None = the 3D cursor saved in BLEND (pin it once approved)
         # bearing=35,                # flow direction (deg, 0 = +Y); default = square across the nearest path
         # inlet=(x, y), outlet=(x, y),   # or give both mouths explicitly
         # target="Concrete.003",     # mesh to join into; default = nearest Concrete
