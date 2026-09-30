@@ -14,8 +14,9 @@ Usage:
      Its Z becomes the pipe invert (inside bottom) at the outlet face.
   3. Check CONFIG below, especially DIRECTION_MODE and the object-name hints.
   4. Scripting workspace -> open this file -> Run Script.
-  5. Read the "Culvert_Report" text block (Text Editor) for cover, cut/fill
-     and warnings.
+  5. A popup shows the result, and the Text Editor switches to the
+     "Culvert_Report" text block (cover, cut/fill, warnings). The same lines
+     go to the system console (Window > Toggle System Console).
 
 How it's laid out:
   - DIRECTION_MODE "AUTO" aims the pipe at the nearest cart-path mesh and
@@ -826,6 +827,27 @@ def main():
         txt = bpy.data.texts.get(REPORT_TEXT) or bpy.data.texts.new(REPORT_TEXT)
         txt.clear()
         txt.write("\n".join(REPORT) + "\n")
+        if not bpy.app.background:
+            show_report(txt)
+
+
+def show_report(txt):
+    """Put the report in front of the user: popup plus the Text Editor."""
+    for win in bpy.context.window_manager.windows:
+        for area in win.screen.areas:
+            if area.type == 'TEXT_EDITOR':
+                area.spaces.active.text = txt
+                area.tag_redraw()
+    failed = any(line.startswith("ERROR") for line in REPORT)
+    warned = any(line.startswith("WARNING") for line in REPORT)
+
+    def draw(menu, _context):
+        for line in REPORT:
+            menu.layout.label(text=line)
+
+    title = "Culvert: failed" if failed else "Culvert: done, with warnings" if warned else "Culvert: done"
+    icon = 'ERROR' if failed else 'INFO'
+    bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
 if __name__ == "__main__":
