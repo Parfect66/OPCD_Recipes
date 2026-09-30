@@ -1,11 +1,11 @@
 {
   "skill_name": "opcd-feature-blend",
-  "note": "Run these in a local Claude session with blender-mcp connected and the user's test .blend open. The geometry itself is covered headless by scripts/selftest.py.",
+  "note": "Run these in a local Claude Code session on the Blender PC. Expected flow: job script in Blender Scripts\\<Course>, background test run with renders, final run to a new .blend. The geometry itself is covered headless by scripts/selftest.py.",
   "evals": [
     {
       "id": 1,
       "prompt": "I've put the cursor on the cart path on hole 4 where the ditch runs under it. Add a 600mm concrete pipe culvert and blend it into the meshes.",
-      "expected_output": "Asks for the library location at session start; runs scene_report; plans a pipe (span 0.6) and asks the user to confirm the AUTO axis; builds and shows both mouths; backs up, blends, verifies (ok=true); finalises into the nearest Concrete mesh only after approval.",
+      "expected_output": "Checks/installs the kit in Blender Scripts\\opcd_feature_kit; asks in one question for the course .blend and what the cursor marks; writes a job entry (kind='pipe', span=0.6, cursor_is='crossing'); runs the background test job with Blender 4.5; reads the report and renders, confirms the AUTO axis with the user; final run to a new .blend only after approval.",
       "files": []
     },
     {
@@ -17,13 +17,13 @@
     {
       "id": 3,
       "prompt": "Add a 24 inch corrugated steel pipe at the cursor. I've dropped CULVERT_IN and CULVERT_OUT empties at each end of the run-off so use those.",
-      "expected_output": "plan_culvert(kind='corrugated', span=T.inch(24), inlet='CULVERT_IN', outlet='CULVERT_OUT'); reports the fall between the empties and warns if it is less than 1 in 100.",
+      "expected_output": "Job entry with kind='corrugated', span=0.6096, inlet/outlet set to the CULVERT_IN/CULVERT_OUT empty positions (read via MCP read-only or from the saved file); reports the fall between them and warns if it is under 1 in 100.",
       "files": []
     },
     {
       "id": 4,
-      "prompt": "C01's outlet headwall looks too tall, knock a foot off it and redo the blend",
-      "expected_output": "Uses restore('C01') (the terrain is already blended), edit_plan('C01', out_top_rel=<current - 0.3048>), then build, backup, blend and verify again; does not hand-edit meshes.",
+      "prompt": "the outlet headwall on the H4 culvert looks too tall, knock a foot off it and redo it",
+      "expected_output": "Edits the H4 entry in Blender Scripts\\<Course>\\<course>_culverts.py (edits.out_top_rel reduced by 0.3048 from the value in the last report), re-runs the background test job, shows the new renders; does not touch the open Blender or hand-patch meshes.",
       "files": []
     }
   ]

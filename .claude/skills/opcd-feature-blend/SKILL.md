@@ -1,219 +1,156 @@
 ---
 name: opcd-feature-blend
-description: Add built features such as culverts (concrete pipe, corrugated steel, stone/brick arch, box) to an OPCD V4 GSPro course in a live Blender 4.5 session via blender-mcp, then carve, reshape and join the surrounding OPCD surface meshes (Fairway, Rough, Concrete, Custom1-4 ...) so the feature sits flush and sealed in the terrain. Use this whenever the user wants to put a culvert, drain, headwall or pipe under a cart path or bank, or add any structure to a run-off, ditch or burn. Also use it to blend an object into OPCD meshes or edit terrain around a placed asset, even if they don't say "culvert" or name the skill.
+description: Add built features such as culverts (concrete pipe, corrugated steel, stone/brick arch, box) to an OPCD V4 GSPro course .blend in Blender 4.5. It carves, reshapes and joins the surrounding OPCD surface meshes (Fairway, Rough, Concrete, Custom1-4 ...) so the feature sits flush and sealed in the terrain. Each course gets a re-runnable job script, run in a background Blender with test renders, and the result is saved to a new .blend. Use this whenever the user wants to put a culvert, drain, headwall or pipe under a cart path or bank, or add any structure to a run-off, ditch or burn on a course. Also use it to blend an object into OPCD meshes or edit terrain around a placed asset, even if they don't say "culvert" or name the skill.
 ---
 
-# OPCD feature blend (Blender 4.5 + blender-mcp)
+# OPCD feature blend (Blender 4.5, background jobs)
 
-You are acting as an expert Blender technical artist on an OPCD V4 course that has
-**already been meshed**: the surface meshes exist, are draped on the terrain and may be
-vertex painted. The job is to add a feature (a culvert is the first supported one) at the
-**3D cursor** and make the terrain meet it cleanly. The finished feature is **joined into
-the nearest `Concrete` mesh** so that it exports with the course.
+Adds a feature (culverts first) to an OPCD V4 course that is **already meshed**, and makes
+the terrain meet it cleanly. The finished feature is **joined into the nearest `Concrete`
+mesh** so it exports with the course. It works like `procedural-building-blender`:
 
-The geometry work is done by the bundled, tested Python modules. You drive them through
-blender-mcp and review the result with the user at each gate. Don't hand-write
-bmesh code for steps the modules already cover. They encode fixes for problems that
-are easy to get wrong, such as seams opening between meshes, Boolean failures on open
-terrain sheets, and UV/colour-attribute mismatches on join.
+- a shared library (the kit) plus one **re-runnable job script per course**;
+- runs in a **background Blender**, never in the user's open file;
+- **test renders** you read back and compare;
+- a **final** run saves a *new* `.blend` and refuses to overwrite.
+
+The geometry is done by the bundled, tested kit. Don't hand-write bmesh code for steps
+it covers. It already handles seams opening between meshes, Boolean failures on open
+terrain sheets, low banks, and UV/colour-attribute mismatches on join.
+
+## Paths
+
+- **Kit:** `C:\Users\steve\Claude_Code\Blender Scripts\opcd_feature_kit\`, containing
+  `opcd_terrain.py`, `culvert.py`, `culvert_job.py` and `selftest.py`.
+- **Job scripts:** `C:\Users\steve\Claude_Code\Blender Scripts\<Course>\<course>_culverts.py`,
+  e.g. `Blender Scripts\Meloneras\meloneras_culverts.py`. Start from
+  `<SKILL_DIR>\scripts\templates\course_culverts_template.py`.
+- **Blender 4.5:** `C:\Program Files\Blender Foundation\Blender 4.5\blender.exe`. Check it
+  with `Test-Path` and ask if it's missing. OPCD courses are 4.5 files. **Never run a
+  course job in Blender 5.x**: saving would upgrade the file.
+- **Test renders and reports:** the session scratchpad.
+- **Final output:** `OUT_BLEND` next to the course `.blend`, e.g. `meloneras_1_2_culverts.blend`.
+  Previews and `culvert_report.json` go in `culvert_previews\` beside it.
+
+### Install or update the kit (check at the start of every session)
+
+`KIT_VERSION` is in `culvert.py`. If the kit folder is missing, or its `KIT_VERSION`
+differs from `<SKILL_DIR>\scripts\culvert.py`, copy `<SKILL_DIR>\scripts\*.py` into the
+kit folder (the templates are not needed there). Say so in one line. Never edit the kit
+copy in place: change the skill's `scripts\` and re-copy.
 
 ## Conventions (from the user)
 
 - 1 BU = 1 m. Talk in **yards** for lengths and **metres** for elevations. Pipe sizes
-  can be given in inches or mm. Convert with `T.yd()`, `T.ft()`, `T.inch()`, `T.mm()`.
+  can be given in inches or mm. Job entries are in metres: 600 mm = `0.6`, 24 in =
+  `0.6096`, 4 ft = `1.2192`.
 - Surface mesh names **contain** one of: `Fairway, Tee, Rough, Custom4, Custom3,
   Custom2, Custom1, Bunker, Concrete, Lake, Creek`. OPCD finds meshes by name, so
-  **never create an object whose name contains any of those words**: the export would
-  pick it up. Features are named `CULVERT_<id>_IN/OUT` and live in the `OPCD_Features`
-  collection until they are joined. Mesh backups are orphan datablocks (`BAK_...`, fake
-  user), not objects.
+  **never create an object whose name contains those words**. Features are named
+  `CULVERT_<id>_IN/OUT` until they are joined.
 - The user places the **3D cursor** where the feature is to be built. **Ask what it
-  marks** if they haven't said. It can be the *crossing* (on the cart path or bank the
-  culvert passes under), or one *mouth*. A common case is the cursor at the outlet in
-  the run-off, with the culvert running under the nearby cart path. The run-off is
-  generally a depression in the ground. **The user identifies it**, so don't assume a
-  detected channel is correct without confirming.
-- Culverts are **concrete** and end up in the Concrete mesh with its material. The barrel
-  is modelled **1 yard deep** behind each mouth and then capped. Nothing is modelled
-  in between.
-- Backups before every destructive step: an incremental `.blend` copy plus mesh copies.
-  The originals are kept until the user approves.
-- `Lake`/`Creek` meshes are flat water surfaces and are **left alone** by default. If
-  one is in the zone, ask first.
+  marks**: the *crossing* (on the path or bank the culvert passes under) or a *mouth*.
+  A common case is the cursor at the outlet in the run-off, with the culvert under the
+  nearby cart path (`cursor_is="outlet"`). The run-off is usually a depression in the
+  ground, and **the user identifies it**, so confirm detected channels.
+- Culverts are **concrete**, joined into the Concrete mesh with its material. The barrel is
+  modelled **1 yard** deep behind each mouth and then capped.
+- `Lake`/`Creek` meshes are flat water and are **left alone** by default. Ask if one is in
+  the zone.
+- Library assets: ask at the start of a session whether a library `.blend` should be used,
+  and where it is. Procedural is the default.
 
-## Session start (do this once per session)
+## Workflow (every culvert)
 
-1. **Ask the user where their asset-library `.blend` lives**, or whether to use
-   procedural generation only. Remember the answer for the session.
-2. Check blender-mcp is connected by calling `get_scene_info`. If the tools are missing,
-   tell the user to start the blender-mcp addon server in Blender (N-panel → BlenderMCP
-   → Connect) and check their MCP client config. See `references/blender-mcp.md`.
-3. Load the modules. `SKILL_DIR` is this skill's base directory (shown when the skill
-   loads). Claude runs on the same machine as Blender, so the path works as-is. Run this
-   at the top of **every** `execute_blender_code` call. It is cheap, and it survives
-   Blender reloading scripts:
+1. **Gather**, asking everything unknown in **one** AskUserQuestion:
+   - the course `.blend` path;
+   - what the cursor marks (crossing, outlet or inlet);
+   - type and size;
+   - anything the screenshot makes ambiguous.
 
-```python
-import sys, importlib
-p = r"<SKILL_DIR>/scripts"
-if p not in sys.path: sys.path.insert(0, p)
-import opcd_terrain as T, culvert as C
-importlib.reload(T); importlib.reload(C)
-```
+   Get the cursor position one of two ways:
+   - If blender-mcp is connected, read it **read-only** with
+     `execute_blender_code("import bpy; print(tuple(bpy.context.scene.cursor.location))")`,
+     and write it into the job as `at=(x, y)`.
+   - Otherwise ask the user to save after placing the cursor, and leave `at=None`. The
+     job then uses the cursor saved in the file.
+2. **Write or extend the job script.** Use one file per course and add one `dict` per
+   culvert to `CULVERTS`: `name`, `kind`, `span`, `rise`, `cursor_is`, `at`, `bearing`,
+   `inlet`/`outlet`, `target`, `overrides`, `edits`. Keys are explained in the template and
+   in `references/culvert.md`. The job is re-run from the untouched source every time, so
+   **change a culvert by editing its entry and re-running**. Never hand-patch a scene.
+3. **Test run in the background:**
+   ```powershell
+   & "C:\Program Files\Blender Foundation\Blender 4.5\blender.exe" -b --factory-startup `
+     --python "C:\Users\steve\Claude_Code\Blender Scripts\opcd_feature_kit\culvert_job.py" -- `
+     "<job.py>" test "<scratchpad>\culverts"
+   ```
+   It plans, builds, blends, verifies and joins every culvert in memory. It writes
+   `culvert_report.json` and `<name>_Inlet / _Outlet / _Overview.png`, and saves nothing.
+   In the renders the culvert is orange and each surface has a flat colour. Cycles uses
+   the GPU when one is available. Exit code 0 means every culvert verified.
+4. **Read the report and the PNGs yourself** before showing the user. Check
+   `ok`, `warnings`, `axis_source` (anything AUTO must be confirmed), `fall_m`, and the
+   `verify` block. Fix failures by editing the job (see the table below) and re-running.
+   Then send the PNGs with SendUserFile, say in plain terms what was decided or guessed
+   (axis, inverts, headwall heights, length in yards), and get approval. **Test-render
+   after every tweak, before the final run.**
+5. **Final run.** Only after approval, and **without** `--factory-startup`, so the OPCD
+   addon loads and its scene data round-trips:
+   ```powershell
+   & "...\Blender 4.5\blender.exe" -b --python "...\opcd_feature_kit\culvert_job.py" -- `
+     "<job.py>" final "<OUT_BLEND folder>\culvert_previews"
+   ```
+   It refuses to overwrite `OUT_BLEND`, and it won't save if any culvert fails verify. Tell
+   the user to open the new file. Their open Blender still shows the old one.
+6. **Record** the course job path, `.blend` paths and Blender exe in project memory.
 
-Every module function prints a JSON result, which blender-mcp returns as the tool
-output. Read it; don't guess what happened.
+### Acting on verify
 
-## Workflow
-
-Run each step as its own `execute_blender_code` call so a failure stops cleanly.
-The plan state is stored on the scene (`scene["opcd_features"]`), so a later session can
-carry on with the same culvert id (`C01`, `C02`, ...).
-
-### 1. Recon
-
-`T.scene_report()` gives the file path and saved state, the mode, the cursor, any
-`CULVERT_IN/OUT` empties, and the nearest surface meshes with their UV maps, colour
-attributes, vertex groups and modifiers. Check for these:
-
-- **Unsaved file**: backups need a saved `.blend`. Ask the user to save; don't pick a
-  path for them.
-- **Edit mode**: the modules switch to Object mode themselves, but tell the user.
-- **Modifiers on surface meshes**: the modules edit the base mesh, and a modifier
-  stack (e.g. shrinkwrap) could move things again. Ask before continuing.
-- **Custom split normals**: reshaped areas will keep stale normals. Mention it.
-- **Meshes near 65k vertices**: Unity 2018 16-bit index buffers. Densify adds vertices,
-  and so does joining the culvert into Concrete.
-- **Lake/Creek near the cursor**: confirm with the user how the water should meet
-  the culvert.
-
-Then take a `get_viewport_screenshot` so you both see the same thing.
-
-### 2. Plan (non-destructive)
-
-Turn the request into parameters. For example, "600 mm pipe", "24 inch corrugated",
-"4 ft stone arch" or "box culvert 1.2 m x 0.9 m" map to `kind`, `span` and `rise`. See
-`references/culvert.md` for sizes and defaults, and ask if the type or size is missing.
-
-```python
-pid = C.plan_culvert(kind="pipe", span=T.mm(600))                  # cursor on the crossing, axis auto
-pid = C.plan_culvert(kind="pipe", span=T.mm(600), cursor_is="outlet")  # cursor at the outlet: runs square
-                                                                   # under the nearest cart path
-pid = C.plan_culvert(kind="arch", span=T.ft(4), bearing=35)        # axis given, flow along bearing
-pid = C.plan_culvert(kind="box", span=1.2, rise=0.9,
-                     inlet="CULVERT_IN", outlet="CULVERT_OUT")     # user-placed mouths
-```
-
-Show the user the summary in plain terms: the axis bearing and where it came from, the
-length between headwalls in yards, the invert levels and fall, the headwall heights, and
-any warnings. **If the axis says AUTO, get it confirmed.** Otherwise offer
-`C.markers(pid)`, which drops two arrow empties on the proposed mouths. The user drags
-them, and you re-plan with `inlet="CULVERT_IN", outlet="CULVERT_OUT"`. For small tweaks
-(levels, heights, wing angle) use `C.edit_plan(pid, in_invert=..., out_top_rel=...,
-wing_angle=...)`.
-
-### 3. Build and look (non-destructive)
-
-`C.build(pid)` creates the two mouth units as separate objects. `C.frame(pid, "in")` aims
-the viewport at a mouth, then take a screenshot; do the same for `"out"`. Ask the user if
-the size, position and look are right before touching the terrain. Rebuilding after
-`edit_plan` is free.
-
-To use a library asset instead, re-plan with `asset=("<library>.blend", "ObjectName")`.
-The asset must follow the mouth-unit convention in `references/culvert.md`.
-
-### 4. Backup, blend, verify (destructive)
-
-```python
-C.backup(pid)    # incremental .blend copy + mesh copies; also picks the Concrete join target
-C.blend(pid)     # densify -> carve -> reshape -> smooth, on every affected surface mesh
-C.verify(pid)    # prints checks; returns True when everything passes
-```
-
-`blend` does four things:
-
-- It densifies the terrain near the feature to about 0.35 m edges.
-- It cuts the footprint out with vertical planes, so the hole edge lies exactly on the
-  wall faces.
-- It pulls the ground to the headwall and wing tops (minus a 50 mm upstand) with a
-  smooth falloff. It also cuts a trapezoidal channel from the apron that fades into the
-  natural run-off.
-- It smooths the interior, with boundaries pinned.
-
-Height edits depend only on world XY, and smoothing never moves a boundary vertex, so
-shared borders between Rough, Fairway, Concrete and the rest stay welded. The self-test
-checks this: the seam gap is 0.0 m. On a 490k-vertex Rough mesh, `blend` takes about
-9 s. If `blend` or `finalise` fails partway through, run `C.restore(pid)` and
-`C.backup(pid)` before retrying.
-
-Read the `verify` output and act on it. Don't just report it:
-
-| check | meaning | typical fix |
+| check | meaning | typical fix (edit the job entry) |
 |---|---|---|
-| `stray_open_edges > 0` | a tear or hole in the terrain near the feature | `restore`, then re-run with a larger `band`, or check the source mesh for pre-existing holes |
-| `buried: false` | the barrel pokes out of the bank | raise `top_rel` for that end or lower the invert, then `restore` and redo |
-| `unsealed_by_m > 0` | the ground misses a wall face (gap or overhang) | increase `footing`, or reduce `smooth` |
-| `flush_max_error_m >= 0.1` | the ground doesn't meet the wall top | usually two features too close together; increase spacing or reduce `band` |
-| `fall_m <= 0` | water would run backwards | swap inlet/outlet or edit the inverts |
-| `unity_65k` | mesh over 65,535 verts | tell the user; they may want to split the mesh in OPCD |
+| `stray_open_edges > 0` | new tear or hole near the feature | larger `overrides.band`, or check the source mesh near the feature for holes |
+| `buried: false` | barrel pokes out of the bank | raise `edits.in_top_rel` / `out_top_rel`, or lower the invert |
+| `unsealed_by_m > 0` | ground misses a wall face | larger `overrides.footing`, or smaller `overrides.smooth` |
+| `flush_max_error_m >= 0.1` | ground doesn't meet the wall top | features too close together; smaller `band` or more spacing |
+| `fall_m <= 0` / "inlet bed LOWER" | water would run backwards | confirm the flow; swap `cursor_is`, give `bearing`, or edit the inverts |
+| "mouths only ... apart" | the two ends overlap | give `inlet`/`outlet` points further apart |
+| `unity_65k` | mesh over 65,535 verts (Unity 2018) | tell the user; they may split the mesh in OPCD |
 
-Frame both mouths and take screenshots. The user approves before finalising.
-
-### 5. Finalise (destructive)
-
-`C.finalise(pid)` box-maps UVs on the culvert at the Concrete mesh's own texel density,
-using the same UV map names. It creates the same colour attributes, filled with the
-average colour of nearby Concrete, and gives the culvert the Concrete material. If the
-Concrete mesh has a `PaintExclude` vertex group, the culvert vertices go into it so paint
-recipes leave them alone. Finally it joins both mouth units into the Concrete mesh. Take
-a final screenshot.
-
-Warn the user about one thing: after the join, **Concrete-wide mesh recipes**
-(`smoothmesh`, `subdividemesh`, `zshiftmesh`, OPCD re-meshing) will also act on the
-culvert. They should run those first, or `restore` → re-run → finalise again.
-
-### 6. Approve or undo
-
-- The user is happy: ask, then `C.discard_backups(pid)`. The `.blend` copy on disk is
-  always kept. Saving the main file is the user's call, so offer it but don't do it
-  unasked.
-- The user wants changes: `C.restore(pid)` puts every touched mesh back exactly and
-  deletes the culvert objects. Then `edit_plan` → `build` → `backup` → `blend` again.
-  Ctrl+Z also works, because each step pushes an undo step, but `restore` is exact.
+After the join, **Concrete-wide recipes** (`smoothmesh`, `subdividemesh`, `zshiftmesh`,
+re-meshing) also act on the culvert. Tell the user to run those on the source file first,
+then re-run the final job.
 
 ## Things to avoid (and why)
 
-- **Boolean modifiers on OPCD surface meshes.** They are open sheets, not solids, so
-  Exact/Manifold booleans produce slivers or drop faces. The vertical-plane `carve` is
-  used instead.
-- **Operators that need a 3D-view context** (knife project, loop cut, view-dependent
-  selection) from blender-mcp. Code runs from a timer with no area context. The modules
-  use bmesh and `temp_override`.
-- **Editing one surface mesh by hand next to another.** Anything that isn't a pure
-  function of XY (e.g. a proportional edit in one mesh) opens seams. If you must add a
-  custom tweak, apply the same XY function to every mesh returned by `C._affected`.
-- **Saving over the user's .blend or deleting backups** without asking.
+- **Building in the user's open Blender.** The job runs in the background from the saved
+  file. Live edits are only for an explicit request; see `references/live-mcp.md`.
+- **Boolean modifiers on OPCD surface meshes.** They are open sheets, so Exact/Manifold
+  booleans drop faces. The kit's vertical-plane `carve` is used instead.
+- **Per-mesh hand edits.** Anything that isn't a pure function of world XY opens seams
+  between neighbouring surface meshes.
+- **Overwriting any `.blend`, or deleting anything**, without asking.
 
 ## Extending to other features
 
-A feature needs only a local frame (origin at the ground contact, +Y outward), a
-footprint outline with a ground target at each vertex, and a mesh. `opcd_terrain`
-(`densify`, `carve`, `apply_height_field`, `smooth_zone`, `match_attributes`,
-`join_into`, backups) is feature-agnostic. Model new types (footbridges, drain grates,
-sleeper walls) on `culvert.py`, and keep the plan → build → backup → blend → verify →
-finalise gates.
+A feature needs a local frame (origin at ground contact, +Y outward), a footprint outline
+with a ground target per vertex, and a mesh. `opcd_terrain` (`densify`, `carve`,
+`apply_height_field`, `smooth_zone`, `match_attributes`, `join_into`, `render_views`,
+backups) is feature-agnostic. Model new types (footbridges, drain grates, sleeper walls)
+on `culvert.py` and `culvert_job.py`. Extend the kit rather than job scripts, and bump
+`KIT_VERSION`.
 
 ## Self-test
 
-`scripts/selftest.py` builds a synthetic hole (a ditch under a cart-path embankment) and
-runs the whole pipeline for all four types. Run it in a **new, empty** Blender file to
-check the install: open it in the Scripting tab and press Run, or use
-`blender -b --python selftest.py -- <out_dir>`.
+`selftest.py` builds a synthetic ditch under a cart path and runs everything for all four
+culvert types, plus the outlet-cursor mode. Run it to check the kit:
+`blender -b --factory-startup --python selftest.py -- <out_dir>`.
 
 ## References
 
-- `references/culvert.md`: types, default dimensions, anatomy, every parameter, the
-  library asset convention, and tuning notes. Read it before planning an unusual size or
-  type, or when using library assets.
-- `references/blender-mcp.md`: tool list, how `execute_blender_code` behaves, Blender 4.5
-  API gotchas, and performance on big OPCD meshes. Read it if a call errors or times out.
+- `references/culvert.md`: types, sizes, anatomy, how the plan is derived, every
+  parameter, the library asset convention, and tuning.
+- `references/live-mcp.md`: applying a culvert inside the open Blender through
+  blender-mcp. Only on request.
+- `references/blender-mcp.md`: blender-mcp behaviour, Blender 4.5 API notes, and
+  performance.

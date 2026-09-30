@@ -1,5 +1,10 @@
 # blender-mcp and Blender 4.5 notes
 
+The default workflow runs in a background Blender and doesn't need blender-mcp. It is
+used only to read the cursor position and for live mode (`live-mcp.md`). If a background
+**final** run (without `--factory-startup`) hangs, check whether the blender-mcp addon
+is set to auto-start its server: two Blenders can't share port 9876.
+
 ## Tools (ahujasid/blender-mcp)
 
 | tool | use it for |

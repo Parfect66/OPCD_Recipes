@@ -214,8 +214,9 @@ See `docs/TROUBLESHOOTING.md` for more.
 
 ## Claude Skill: opcd-feature-blend
 
-`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features (culverts first) at the 3D cursor in a live Blender 4.5 session via [blender-mcp](https://github.com/ahujasid/blender-mcp). It carves and reshapes the surrounding OPCD surface meshes, then joins the feature into the nearest `Concrete` mesh.
+`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features (culverts first) to an OPCD V4 course `.blend`. It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
 
-- **Install:** Claude Code picks it up automatically when run from this repo. To use it everywhere, copy the folder to `~/.claude/skills/`.
-- **Check the geometry routines:** run `scripts/selftest.py` in a new, empty Blender file, or headless with `blender -b --python .claude/skills/opcd-feature-blend/scripts/selftest.py -- /tmp/out`.
-- **Workflow and safety gates:** see `SKILL.md`.
+- **Job script:** each course gets a re-runnable script, e.g. `Blender Scripts\<Course>\<course>_culverts.py`, built from `scripts/templates/`.
+- **Background runs:** the job runs in a background Blender 4.5 via `scripts/culvert_job.py`, never in the open file. `test` mode renders review PNGs; `final` mode saves a new `.blend` and refuses to overwrite.
+- **Kit location:** the kit is copied to `Blender Scripts\opcd_feature_kit\` on first use.
+- **Checking the kit:** run `blender -b --factory-startup --python scripts/selftest.py -- <out_dir>`.

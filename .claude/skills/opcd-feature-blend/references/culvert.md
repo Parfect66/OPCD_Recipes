@@ -111,6 +111,18 @@ flow=None, asset=None, **overrides)`. Overrides (all metres/degrees):
 | `search` | 15 | how far either side of the cursor to look for the bed |
 | `segments` | auto | opening resolution (16–48) |
 
+### Job entry keys (`CULVERTS` in the course job script)
+
+| key | maps to |
+|---|---|
+| `name` | render and report file names, and the plan's name |
+| `kind`, `span`, `rise`, `bearing`, `inlet`, `outlet`, `flow`, `asset`, `cursor_is` | `plan_culvert` arguments |
+| `at` | the point the cursor marks, as `(x, y)`. `None` = the 3D cursor saved in the `.blend` |
+| `overrides` | dict of the parameters above, e.g. `{"band": 1.5}` |
+| `edits` | applied after planning with `edit_plan`, e.g. `{"out_top_rel": 0.8}` |
+| `target` | mesh to join into (default: nearest Concrete) |
+| `include_water` | also reshape Lake/Creek meshes (default `False`) |
+
 `edit_plan(pid, ...)` works before `blend`. Use `in_invert`, `out_invert`, `in_top_rel`,
 `out_top_rel`, `in_wing_end_rel=[l, r]`, or any override key. Then call `build` again.
 

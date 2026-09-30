@@ -26,6 +26,8 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
+KIT_VERSION = "2026.09.30-2"   # bump on every change; the skill compares it with the installed kit
+
 KINDS = ("pipe", "corrugated", "arch", "box")
 
 DEFAULTS = dict(
@@ -335,7 +337,7 @@ def nearest_path(xy, radius=40.0, window=5.0):
 
 
 def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, outlet=None,
-                 centre=None, flow=None, asset=None, cursor_is="crossing", **overrides):
+                 centre=None, flow=None, asset=None, cursor_is="crossing", name=None, **overrides):
     """Read the terrain and propose a culvert. Non-destructive.
 
     span/rise in metres (use T.inch(24), T.mm(600), T.yd(1) ...).
@@ -446,7 +448,12 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
                 break
         note = "auto"
         if s_back is None:
-            s_back = max(prof, key=lambda t: t[1])[0]
+            # bank too low: put the headwall on the highest ground between the bed and
+            # the crossing, but keep it clear of the crossing so the two ends (and their
+            # barrels) never overlap; the blend then fills the bank up to the headwall
+            min_half = max(1.5, 1.5 * span) + p["barrel_depth"]
+            cands = [(s, z) for s, z in prof[:i_low + 1] if abs(s) >= min_half] or prof[i_low:i_low + 1]
+            s_back = max(cands, key=lambda t: t[1])[0]
             note = "bank lower than opening + cover: headwall will need fill over it"
             warnings.append(f"{'upstream' if side < 0 else 'downstream'} bank is too low for "
                             f"{T.fmt_len(rise)} opening + cover - terrain will be raised")
@@ -464,6 +471,9 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
     else:
         up, dn = (-1, 1) if raw[-1]["invert"] >= raw[1]["invert"] else (1, -1)
     length = abs(raw[1]["s"] - raw[-1]["s"])
+    if length < 2 * (p["barrel_depth"] + p["wall"]):
+        warnings.append(f"mouths only {T.fmt_len(length)} apart - the two ends will overlap; "
+                        "give inlet/outlet points or a longer crossing")
     inv_in, inv_out = raw[up]["invert"], raw[dn]["invert"]
     min_fall = length * p["min_fall"]
     if inv_in - inv_out < min_fall:
@@ -499,7 +509,7 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
     pid = f"C{len(state) + 1:02d}"
     while pid in state:
         pid = f"C{int(pid[1:]) + 1:02d}"
-    plan = dict(id=pid, kind=kind, span=span, rise=rise, params=p, centre=list(c), axis=list(d),
+    plan = dict(id=pid, name=name or pid, kind=kind, span=span, rise=rise, params=p, centre=list(c), axis=list(d),
                 bearing=_bearing(d), axis_note=axis_note, crest_z=zc, length=length,
                 fall=ends["in"]["invert"] - ends["out"]["invert"], ends=ends, warnings=warnings,
                 asset=list(asset) if asset else None, status="planned", objects={}, backup={})
@@ -571,6 +581,31 @@ def markers(pid):
         ob.rotation_euler = (math.radians(90), 0, math.atan2(o[1], o[0]) - math.radians(90))
     T.emit({"id": pid, "markers": ["CULVERT_IN", "CULVERT_OUT"],
             "note": "arrows point outward into the channel; drag them, then re-plan with inlet/outlet"})
+
+
+def preview_views(pid):
+    """Camera views for test renders: {label: (location, target, lens)}.
+
+    One close-up per mouth, looking in from the channel, plus an oblique overview.
+    """
+    plan = T.load_state()[pid]
+    views = {}
+    for role, label, side in (("in", "Inlet", 1.5), ("out", "Outlet", -1.5)):
+        e = plan["ends"][role]
+        o = Vector((*e["outward"], 0))
+        x = Vector((o.y, -o.x, 0))
+        m = Vector((*e["mouth"], e["invert"]))
+        back = max(5.0, 6.0 * plan["span"])
+        loc = m + o * back + x * side * (back / 4) + Vector((0, 0, 1.2 + plan["rise"]))
+        views[label] = (tuple(loc), tuple(m + Vector((0, 0, plan["rise"] * 0.6))), 24)
+    a = Vector((*plan["ends"]["in"]["mouth"], plan["ends"]["in"]["invert"]))
+    b = Vector((*plan["ends"]["out"]["mouth"], plan["ends"]["out"]["invert"]))
+    mid = (a + b) / 2
+    ax = (b - a).normalized()
+    side = Vector((ax.y, -ax.x, 0))
+    L = max((b - a).length, 6.0)
+    views["Overview"] = (tuple(mid + side * L * 1.1 - ax * L * 0.35 + Vector((0, 0, L * 0.9))), tuple(mid), 28)
+    return views
 
 
 def frame(pid, role="in", distance=None):
@@ -686,15 +721,19 @@ def _finalise_target(plan, target=None):
     return min(cands, key=lambda ob: T.bbox_dist_xy(ob, *c))
 
 
-def backup(pid, target=None):
-    """Incremental .blend copy + orphan mesh copies of every mesh blend/finalise will touch."""
+def backup(pid, target=None, file_copy=True):
+    """Incremental .blend copy + orphan mesh copies of every mesh blend/finalise will touch.
+
+    file_copy=False skips the .blend copy - used by background jobs, where the
+    source file is only ever read and results are saved to a new file.
+    """
     st = T.load_state()
     plan = st[pid]
     objs, water = _affected(plan, _reach(plan) + 0.5)
     tgt = _finalise_target(plan, target)
     if tgt not in objs:
         objs.append(tgt)
-    f = T.backup_file(pid)
+    f = T.backup_file(pid) if file_copy else None
     meshes = T.backup_meshes(objs, pid)
     plan["backup"] = dict(file=f, meshes=meshes)
     plan["target"] = tgt.name
@@ -745,7 +784,16 @@ def blend(pid, include_water=False):
             tch = inv - 0.02 + slope * (v - v_end) + lat * p["channel_batter"]
             wch = np.where(v <= v_end + 1.0, 1.0, T.smoothstep(1.0 - (v - v_end - 1.0) / p["channel_fade"]))
             wch = np.where(beyond, wch, 0.0)
-            return z1 + wch * (np.minimum(z1, tch) - z1)
+            z2 = z1 + wch * (np.minimum(z1, tch) - z1)
+            # fill-only plateau over the barrel stub so it can never poke out of a low bank
+            hw = dims["half_w"]
+            v0, v1 = -(p["barrel_depth"] + 0.25), -p["wall"]
+            du = np.maximum(np.abs(u) - hw, 0.0)
+            dv = np.maximum(np.maximum(v0 - v, v - v1), 0.0)
+            wb = T.smoothstep(1.0 - np.hypot(du, dv) / band)
+            wb *= T.smoothstep(-v / p["wall"])  # only behind the headwall face, never over the wings
+            top = inv + e["top_rel"] - p["upstand"]
+            return z2 + wb * np.maximum(top - z2, 0.0)
         return f
 
     report = {}
@@ -823,6 +871,9 @@ def verify(pid):
           and all(m["unsealed_by_m"] == 0 and m["flush_max_error_m"] < 0.1 for m in barrel.values())
           and plan["fall"] > 0)
     checks["ok"] = ok
+    st = T.load_state()
+    st[pid]["verify"] = checks
+    T.save_state(st)
     T.emit({"id": pid, "status": plan["status"], "checks": checks})
     return ok
 

@@ -172,6 +172,130 @@ def look_at(target, from_dir=(0.0, -1.0, 0.6), distance=8.0):
     return n
 
 
+REVIEW_COLOURS = (  # flat colours for test renders, by surface keyword
+    ("Fairway", (0.30, 0.62, 0.22)), ("Tee", (0.36, 0.68, 0.26)), ("Rough", (0.18, 0.42, 0.14)),
+    ("Custom", (0.42, 0.50, 0.28)), ("Bunker", (0.86, 0.78, 0.56)), ("Concrete", (0.62, 0.62, 0.60)),
+    ("Lake", (0.18, 0.34, 0.60)), ("Creek", (0.22, 0.40, 0.62)),
+)
+FEATURE_COLOUR = (0.92, 0.55, 0.22)
+
+
+def _review_colour(ob, feature_objs):
+    if ob in feature_objs:
+        return FEATURE_COLOUR
+    for key, col in REVIEW_COLOURS:
+        if key in ob.name:
+            return col
+    return (0.5, 0.5, 0.5)
+
+
+def _cycles_gpu():
+    """Switch Cycles to the first available GPU backend; False = stay on CPU.
+
+    A background Blender started with --factory-startup has GPU rendering off.
+    """
+    try:
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+    except KeyError:
+        return False
+    for backend in ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL"):
+        try:
+            prefs.compute_device_type = backend
+        except TypeError:
+            continue
+        prefs.get_devices()
+        gpus = [d for d in prefs.devices if d.type == backend]
+        if gpus:
+            for d in prefs.devices:
+                d.use = d.type == backend
+            bpy.context.scene.cycles.device = 'GPU'
+            return backend
+    return False
+
+
+def render_views(out_dir, prefix, views, engine="CYCLES", res=(1280, 720), samples=24):
+    """Render review PNGs: {label: (location, target, lens)} -> [paths].
+
+    Every mesh gets a flat colour by surface type (features orange) through a
+    temporary view-layer material override, so OPCD shaders don't matter. The
+    scene's camera, engine, override and colours are restored afterwards.
+    engine: "CYCLES" (works headless everywhere) or "BLENDER_WORKBENCH" (faster, needs a GPU).
+    """
+    import os
+    os.makedirs(out_dir, exist_ok=True)
+    sc = bpy.context.scene
+    vl = bpy.context.view_layer
+    feat = bpy.data.collections.get(FEATURE_COLLECTION)
+    feat_objs = set(feat.all_objects) if feat else set()
+    saved = dict(camera=sc.camera, engine=sc.render.engine, x=sc.render.resolution_x,
+                 y=sc.render.resolution_y, pct=sc.render.resolution_percentage,
+                 path=sc.render.filepath, override=vl.material_override, world=sc.world)
+    colours = {}
+    for ob in sc.objects:
+        if ob.type == 'MESH':
+            colours[ob.name] = tuple(ob.color)
+            ob.color = (*_review_colour(ob, feat_objs), 1.0)
+    mat = bpy.data.materials.new("_tmp_review")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    info = nt.nodes.new("ShaderNodeObjectInfo")
+    bsdf = nt.nodes["Principled BSDF"]
+    nt.links.new(info.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.8
+    cam = bpy.data.objects.new("_tmp_cam", bpy.data.cameras.new("_tmp_cam"))
+    cam.data.clip_start, cam.data.clip_end = 0.05, 5000.0
+    sun = bpy.data.objects.new("_tmp_sun", bpy.data.lights.new("_tmp_sun", 'SUN'))
+    sun.data.energy = 3.5
+    sun.rotation_euler = (math.radians(50), 0, math.radians(35))
+    world = bpy.data.worlds.new("_tmp_world")
+    world.use_nodes = True
+    world.node_tree.nodes["Background"].inputs[0].default_value = (0.55, 0.65, 0.8, 1)
+    world.node_tree.nodes["Background"].inputs[1].default_value = 0.6
+    for o in (cam, sun):
+        sc.collection.objects.link(o)
+    paths = []
+    try:
+        sc.camera = cam
+        sc.world = world
+        vl.material_override = mat
+        sc.render.engine = engine
+        sc.render.resolution_x, sc.render.resolution_y = res
+        sc.render.resolution_percentage = 100
+        if engine == "CYCLES":
+            sc.cycles.samples = samples
+            _cycles_gpu()
+        else:
+            sh = sc.display.shading
+            sh.light, sh.color_type = 'STUDIO', 'OBJECT'
+            sh.show_shadows = sh.show_cavity = True
+        for label, (loc, target, lens) in views.items():
+            cam.location = Vector(loc)
+            cam.rotation_euler = (Vector(target) - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
+            cam.data.lens = lens
+            path = os.path.join(out_dir, f"{prefix}_{label}.png")
+            sc.render.filepath = path
+            bpy.ops.render.render(write_still=True)
+            paths.append(path)
+    finally:
+        sc.camera, sc.render.engine = saved["camera"], saved["engine"]
+        sc.render.resolution_x, sc.render.resolution_y = saved["x"], saved["y"]
+        sc.render.resolution_percentage = saved["pct"]
+        sc.render.filepath, sc.world = saved["path"], saved["world"]
+        vl.material_override = saved["override"]
+        for name, col in colours.items():
+            ob = bpy.data.objects.get(name)
+            if ob:
+                ob.color = col
+        cam_data, sun_data = cam.data, sun.data
+        bpy.data.objects.remove(cam)
+        bpy.data.objects.remove(sun)
+        bpy.data.cameras.remove(cam_data)
+        bpy.data.lights.remove(sun_data)
+        bpy.data.materials.remove(mat)
+        bpy.data.worlds.remove(world)
+    return paths
+
+
 # ------------------------------------------------------------------ height sampling
 
 class HeightSampler:
