@@ -197,6 +197,10 @@ their PC:
 - **Per-mesh hand edits.** Anything that isn't a pure function of world XY opens seams
   between neighbouring surface meshes.
 - **Overwriting any `.blend`, or deleting anything**, without asking.
+- **Asking whether to join a feature into Concrete.** The user doesn't want to be asked. Live builds
+  stay separate objects; join only on explicit request (see `references/live-mcp.md`, lessons).
+- **Live-mode sessions:** read the "Lessons" section of `references/live-mcp.md` first (stale marker
+  arrows, undo wiping plan state, mouths on paths, passage cuttings cutting hillside paths).
 
 ## Extending to other features
 

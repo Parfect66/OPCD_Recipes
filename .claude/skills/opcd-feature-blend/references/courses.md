@@ -70,6 +70,22 @@ barrel. Review the renders and `deck_fill_m` before accepting a re-run, or add
     ground at the cursor. That led to kit -8, where the cursor ground is the invert and a
     level pad sits in front. Future builds shouldn't raise inverts.
 - Test 1 exposed the deck-taper bug, fixed in kit -7.
+**Live MCP session, 30 Sep 2026** (open file `H:\Meloneras_Latest\Support Files\Blender\meloneras_1.blend`,
+first as `meloneras_1.blend1`). All built live with the kit's live mode, **not saved by the user at the time
+of writing** and **not in the job script**. Each has a file backup `meloneras_1_pre-C<nn>_01.blend` beside the
+source. Plan ids are scene state: an undo (Ctrl+Z) in Blender drops later ids. All features are left as
+separate objects (not joined into Concrete), at the user's request.
+
+| plan | what | cursor / mouths (Blender XY) | settings | notes |
+|---|---|---|---|---|
+| C03 | 1.0 m concrete pipe, `CULVERT_C03` | inlet at cursor (-852.37, -1219.29) inv 36.32; outlet (-859.50, -1189.21) inv 35.03 | `flow="as_bearing"`, `band` 1.5, `footing` 1.0 | bearing 346.7, 33.8 yd, fall 1.29 m. Cursor was uphill-low, so the outlet is cut ~4 m. Joined then **unjoined** (473 verts separated) |
+| C05 | 1.0 m concrete pipe, `CULVERT_C05_IN/OUT` | outlet at cursor (-877.37, -1141.49) inv 32.03; inlet (-870.70, -1148.00) inv 32.75 | `band` 1.5, `footing` 1.0 | first auto inlet (-873.56, -1145.21) sat on the path bend and cut through it; moved 4 m out. Path raised 1.8 m by deck, not cut |
+| C07 | 1.5 x 1.125 m box | inlet (-908.70, -1100.82) inv 28.45; outlet dragged to (-939.37, -1046.26) inv 26.97 | `flow="as_bearing"`, `band` 1.5, `footing` 1.0 | 68 yd, fall 1 in 42; Custom4 filled up to 3.1 m |
+| C09 | 1.5 x 1.125 m box | inlet at cursor (-1028.36, -952.55) inv 16.88; outlet auto (-1037.27, -935.25) inv 13.59 | `band` 1.5, `footing` 1.0 | 21 yd, fall 1 in 6; path not reshaped |
+| C14 | arched buggy tunnel 3.0 x 2.6 m (`tunnel`) | portals dragged, then moved back from the path: (-1053.2, -945.4) floor 16.78; (-1041.7, -963.8) floor 17.39 | `channel_fade` 4.0, `channel_batter` 1.0 | 23.7 yd, floor grade 2.8%; path raised up to 3.75 m, not cut. Earlier tries (C11-C13) cut the path by up to 3.2 m 15 m west of the north portal; see "Passages" in live-mcp.md |
+
+Leftovers in the scene: `CULVERT_C02_OUT` (stray, from an abandoned plan) and `CULVERT_C05_IN/OUT`,
+`CULVERT_C07_IN/OUT` etc. are the real mouth units; the marker empties `CULVERT_IN/OUT` were deleted.
 
 **Open to-dos**
 - [ ] Lower the **Unity terrain**: after importing the new meshes into Unity, run
@@ -79,3 +95,9 @@ barrel. Review the renders and `deck_fill_m` before accepting a re-run, or add
   channel runs about 4 yd out):
   - Inlet: (-1040.47, -955.00), bed 18.30 m, channel to the SSE.
   - Outlet: (-1046.97, -942.54), bed 17.33 m, channel to the NNW.
+- [ ] Save the live-MCP work from 30 Sep 2026 under a proper `.blend` name (the open file began as a `.blend1`
+  backup copy), then add C03, C05, C07, C09 and C14 to `meloneras_culverts.py` before any job re-run, using the
+  mouths above (`at` / `inlet` / `outlet`, `flow="as_bearing"` where noted). Their Unity terrain lowering is also
+  outstanding; C03's outlet and C14's portals need the deepest cuts (up to ~4 m).
+- [ ] Delete old `meloneras_1_pre-C*_01.blend` backup copies in `H:\Meloneras_Latest\Support Files\Blender\` once
+  the user is happy (one per plan, incl. abandoned plans).
