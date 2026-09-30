@@ -15,3 +15,6 @@
   target paths and give PowerShell commands (see SKILL.md, "When this session can't run
   Blender").
 - `blender_scripts/culvert_blend.py` is a paste-into-Blender fallback only.
+- **PRs on this repo: merge automatically.** Once a PR Claude opened is mergeable (no
+  conflict, any checks green, no open review threads), mark it ready and merge it
+  (merge commit) without asking. Then tell the user it's merged and to pull `main`.
