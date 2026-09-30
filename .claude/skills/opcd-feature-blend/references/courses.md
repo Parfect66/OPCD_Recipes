@@ -45,6 +45,11 @@ History:
   `HIDE_IN_RENDERS`.
 - Before test 3 the saved cursor moved about 1.8 yd east, so `at` is now pinned.
 
+**Note:** `Meloneras_box_01` was approved on kit 2026.09.30-4, before the **deck** step
+existed. Re-running the job on kit -6 or later also bridges any dip in path 356 over the
+barrel. Review the renders and `deck_fill_m` before accepting a re-run, or add
+`"deck": False` to its overrides to reproduce the approved result exactly.
+
 **Open to-dos**
 - [ ] Lower the **Unity terrain** below the new beds at both mouths and their channels
   (Blender world XY; about 4 yd out along each channel):

@@ -72,6 +72,13 @@ copy in place: change the skill's `scripts\` and re-copy.
   would otherwise fill the culvert.
 - Library assets: ask at the start of a session whether a library `.blend` should be used,
   and where it is. Procedural is the default.
+- **False dips over the barrel.** Meshes conformed to the Unity terrain often dip where
+  the heightmap has a notch along the watercourse or through the embankment. The kit's
+  **deck** step (on by default) raises every surface over the barrel, including the road
+  or motorway on top, to a straight chord across the notch, and never lowers anything.
+  Report the `deck.max_fill_over_barrel_m` from the plan. Tune it with
+  `overrides.deck_reach`, or switch it off with `overrides.deck=False`. See
+  `references/culvert.md` §1 "Deck".
 - **Known courses** and their paths, features and open to-dos are in
   `references/courses.md`. Read it when the user names a course.
 
@@ -140,6 +147,7 @@ copy in place: change the skill's `scripts\` and re-copy.
 | "mouths only ... apart" | the two ends overlap | give `inlet`/`outlet` points further apart |
 | `unity_65k` | mesh over 65,535 verts (Unity 2018) | tell the user; they may split the mesh in OPCD. Check `verts_before`: often it was already over. |
 | `concrete_reshaped` not empty | a cart path or road was cut or filled (warning, not a failure) | if the feature doesn't cross that path, use `overrides.band` 1.5 and raise the headwall (`edits.in_top_rel`); expected only for the approach path into a passage |
+| road over the feature still dips after blending | notch wider than the deck reach | raise `overrides.deck_reach` (default 6 m beyond the headwall half-width) |
 | grey ground filling a mouth in the renders | a non-OPCD mesh (usually `Terrain`) is rendering | put it in `HIDE_IN_RENDERS`; see Conventions |
 
 After the join, **Concrete-wide recipes** (`smoothmesh`, `subdividemesh`, `zshiftmesh`,

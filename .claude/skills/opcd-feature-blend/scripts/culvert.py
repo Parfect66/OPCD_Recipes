@@ -26,7 +26,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.09.30-5"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.09.30-6"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
 # Passages carry a path or road THROUGH the embankment: open barrel end to end,
@@ -54,6 +54,9 @@ DEFAULTS = dict(
     segments=None,      # opening resolution, default from size
     corr_pitch=0.068,   # 68 x 13 mm corrugation
     corr_depth=0.013,
+    deck=True,          # bridge false dips in the surface over the barrel (fill only)
+    deck_reach=6.0,     # m beyond the headwall half-width, each side, to find the undipped road
+    deck_step=0.5,      # m sampling step for the deck profile
 )
 
 # Per-kind defaults on top of DEFAULTS (overrides still win).
@@ -360,6 +363,83 @@ def nearest_path(xy, radius=40.0, window=5.0):
     return dict(name=name, point=P, tangent=t / np.linalg.norm(t), dist=float(dist))
 
 
+# ------------------------------------------------------------------ deck (dip bridging)
+#
+# OPCD meshes are conformed to the terrain imported from Unity, and the heightmap often
+# carries a false notch where the watercourse or road runs through the embankment. The
+# path / road / motorway over the feature then dips over the barrel. The deck step bridges
+# that notch: across the strip between the two headwall back faces, the surface is raised
+# (never lowered) to a straight chord between the highest untouched points either side.
+
+def plan_deck(plan, sampler):
+    """Profile of the deck chord over the barrel, from the untouched surface. Stored in the plan."""
+    p = plan["params"]
+    if not p.get("deck", True):
+        return None
+    a_in = np.array(plan["ends"]["in"]["mouth"], float)
+    a_out = np.array(plan["ends"]["out"]["mouth"], float)
+    L = float(np.linalg.norm(a_out - a_in))
+    s0, s1 = p["wall"], L - p["wall"]
+    if s1 - s0 < 2 * p["deck_step"]:
+        return None
+    ax = (a_out - a_in) / L
+    nx = np.array([ax[1], -ax[0]])
+    hw = max(mouth_dims(plan["kind"], plan["span"], plan["rise"], e["top_rel"], p)["half_w"]
+             for e in plan["ends"].values())
+    umax = hw + p["deck_reach"]
+    us = np.arange(p["deck_step"], umax + 1e-6, p["deck_step"])
+    rows = []
+    for sk in np.linspace(s0, s1, max(3, int((s1 - s0) / p["deck_step"]) + 1)):
+        base = a_in + sk * ax
+        zc = sampler.height(*base)
+        side = []
+        for sgn in (-1, 1):
+            best = (0.0, zc)
+            for u in us:
+                z = sampler.height(*(base + sgn * u * nx))
+                if z is not None and (best[1] is None or z > best[1]):
+                    best = (float(u), z)
+            side.append(best)
+        (uL, zL), (uR, zR) = side
+        if zL is None or zR is None:
+            continue
+        chord0 = zL + (zR - zL) * uL / max(uL + uR, 1e-6)
+        rows.append((float(sk), uL, float(zL), uR, float(zR),
+                     float(max(chord0 - zc, 0.0)) if zc is not None else 0.0))
+    if not rows:
+        return None
+    r = np.array(rows)
+    return dict(origin=a_in.tolist(), axis=ax.tolist(), normal=nx.tolist(), s0=s0, s1=s1,
+                taper=float(min(2.0, (s1 - s0) / 2)), s=r[:, 0].tolist(), uL=r[:, 1].tolist(),
+                zL=r[:, 2].tolist(), uR=r[:, 3].tolist(), zR=r[:, 4].tolist(),
+                centre_fill_max_m=round(float(r[:, 5].max()), 3), half_width_m=round(float(umax), 2))
+
+
+def deck_field(deck):
+    """f(xy (N,2), z (N,)) -> new z: raise to the chord inside the deck strip (fill only)."""
+    o, ax, nx = (np.array(deck[k]) for k in ("origin", "axis", "normal"))
+    S = np.array(deck["s"])
+    cols = {k: np.array(deck[k]) for k in ("uL", "zL", "uR", "zR")}
+
+    def f(xy, z):
+        rel = xy - o
+        s_, u = rel @ ax, rel @ nx
+        uL, zL, uR, zR = (np.interp(s_, S, cols[k]) for k in ("uL", "zL", "uR", "zR"))
+        inside = (s_ > deck["s0"]) & (s_ < deck["s1"]) & (u >= -uL) & (u <= uR)
+        chord = zL + (zR - zL) * (u + uL) / np.maximum(uL + uR, 1e-6)
+        t = deck["taper"]
+        w = T.smoothstep(np.minimum(s_ - deck["s0"], deck["s1"] - s_) / t) if t > 0 else 1.0
+        return np.where(inside, z + w * np.maximum(chord - z, 0.0), z)
+    return f
+
+
+def deck_height(deck, x, y, z):
+    """Deck-corrected height of one point (z from the untouched surface)."""
+    if deck is None or z is None:
+        return z
+    return float(deck_field(deck)(np.array([[x, y]]), np.array([z]))[0])
+
+
 def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, outlet=None,
                  centre=None, flow=None, asset=None, cursor_is="crossing", name=None, **overrides):
     """Read the terrain and propose a culvert. Non-destructive.
@@ -568,6 +648,19 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         mid = (ends["in"]["invert"] + ends["out"]["invert"]) / 2.0
         for e in ends.values():
             e["barrel_rise"] = float(mid - e["invert"])
+    # deck: bridge a false dip over the barrel, then size the headwalls from the bridged ground
+    deck = plan_deck(dict(kind=kind, span=span, rise=rise, params=p, ends=ends), sampler)
+    if deck is not None:
+        for e in ends.values():
+            o = np.array(e["outward"])
+            sb = np.array(e["mouth"]) - o * (p["wall"] + 0.5)
+            zb = deck_height(deck, sb[0], sb[1], sampler.height(*sb))
+            if zb is not None:
+                e["top_rel"] = float(min(max(zb - e["invert"] + p["upstand"], rise + p["cover_min"]),
+                                         rise + p["max_top"]))
+        if deck["centre_fill_max_m"] > 0.05:
+            warnings.append(f"surface over the barrel dips up to {deck['centre_fill_max_m']:.2f} m "
+                            "(false notch from the terrain) - the deck step will fill it")
 
     state = T.load_state()
     pid = f"C{len(state) + 1:02d}"
@@ -575,7 +668,7 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         pid = f"C{int(pid[1:]) + 1:02d}"
     plan = dict(id=pid, name=name or pid, kind=kind, passage=passage, span=span, rise=rise, params=p,
                 centre=list(c), axis=list(d),
-                bearing=_bearing(d), axis_note=axis_note, crest_z=zc, length=length,
+                bearing=_bearing(d), axis_note=axis_note, crest_z=zc, length=length, deck=deck,
                 fall=ends["in"]["invert"] - ends["out"]["invert"], ends=ends, warnings=warnings,
                 asset=list(asset) if asset else None, status="planned", objects={}, backup={})
     state[pid] = plan
@@ -603,6 +696,8 @@ def summary(pid):
                    "xy": [round(v, 2) for v in e["out"]["mouth"]], "how": e["out"]["note"]},
         "fall": (f"floor grade {plan['fall'] / plan['length']:+.1%} (end A to end B)" if plan.get("passage") else
                  f"{plan['fall']:.3f} m (1 in {plan['length'] / plan['fall']:.0f})" if plan["fall"] > 0 else "NONE"),
+        "deck": ({"max_fill_over_barrel_m": plan["deck"]["centre_fill_max_m"],
+                  "half_width": T.fmt_len(plan["deck"]["half_width_m"])} if plan.get("deck") else "off"),
         "warnings": plan["warnings"],
         "objects": plan["objects"], "backup": plan["backup"],
     })
@@ -865,9 +960,20 @@ def blend(pid, include_water=False):
         return f
 
     report = {}
+    dfield = deck_field(plan["deck"]) if plan.get("deck") else None
     for ob in objs:
         bm = T._bm_world(ob)
         r = {"verts_before": len(bm.verts)}
+        r["deck_fill_m"] = 0.0
+        if dfield is not None:
+            bm.verts.ensure_lookup_table()
+            xy = T._vert_xy(bm)
+            if len(xy):
+                z = np.array([v.co.z for v in bm.verts])
+                zn = dfield(xy, z)
+                for i in np.nonzero(zn > z + 1e-6)[0]:
+                    bm.verts[i].co.z = float(zn[i])
+                r["deck_fill_m"] = round(float(max((zn - z).max(), 0.0)), 3)
         r["verts_added"] = T.densify(bm, outlines, band + 0.5, p["max_edge"])
         r["faces_removed"] = sum(T.carve(bm, xy) for xy in outlines)
         cut = fill = 0.0

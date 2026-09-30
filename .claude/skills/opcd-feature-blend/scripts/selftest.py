@@ -36,7 +36,15 @@ def ground(x, y):
     return max(g, emb)
 
 
-def build_scene():
+def notched(x, y):
+    """ground() with a false 0.4 m notch in the embankment over the ditch, as left by
+    conforming to a Unity heightmap that dips where the watercourse runs."""
+    dip = 0.4 * max(0.0, 1.0 - abs(x) / 2.5) * max(0.0, min(1.0, 1.0 - (abs(y) - 2.5) / 1.0))
+    return ground(x, y) - dip
+
+
+def build_scene(ground_fn=None):
+    ground_fn = ground_fn or ground
     for ob in list(bpy.data.objects):
         bpy.data.objects.remove(ob, do_unlink=True)
     step, half = 0.75, 21.0
@@ -59,7 +67,7 @@ def build_scene():
                 for key in ((i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)):
                     if key not in verts:
                         x, y = grid[key]
-                        verts[key] = bm.verts.new((x, y, ground(x, y)))
+                        verts[key] = bm.verts.new((x, y, ground_fn(x, y)))
                     q.append(verts[key])
                 bm.faces.new(q)
         uv = bm.loops.layers.uv.new("UVMap")
@@ -120,6 +128,31 @@ def build_passage_scene():
         me.color_attributes.new("Col", 'BYTE_COLOR', 'CORNER')
         me.materials.append(bpy.data.materials.get(name.split("_")[0]) or bpy.data.materials.new(name.split("_")[0]))
         bpy.context.scene.collection.objects.link(bpy.data.objects.new(name, me))
+
+
+def deck_test(out_dir, do_render=False):
+    """A false notch in the path over the culvert is bridged; nothing is lowered."""
+    build_scene(notched)
+    sampler0 = T.HeightSampler([bpy.data.objects["Concrete_T"]])
+    before = {q: sampler0.height(*q) for q in ((0.0, 0.0), (1.0, 0.5), (-1.2, -0.6), (6.0, 0.0))}
+    pid = C.plan_culvert(kind="pipe", span=T.mm(600))
+    plan = T.load_state()[pid]
+    assert plan["deck"] and plan["deck"]["centre_fill_max_m"] > 0.3, plan["deck"]
+    C.build(pid)
+    C.backup(pid, file_copy=False)
+    C.blend(pid)
+    sampler = T.HeightSampler([bpy.data.objects["Concrete_T"]])
+    for q, z0 in before.items():
+        z = sampler.height(*q)
+        assert z >= z0 - 1e-4, f"deck lowered the path at {q}: {z0} -> {z}"
+    z_mid = sampler.height(0.0, 0.0)
+    assert abs(z_mid - ground(0.0, 0.0)) < 0.06, f"notch not bridged: {z_mid} vs {ground(0.0, 0.0)}"
+    n_common, gap = seam_gap()
+    assert gap < 1e-4, f"deck opened the Rough/Concrete seam by {gap} m"
+    assert C.verify(pid), T.load_state()[pid]["verify"]
+    if do_render:
+        T.render_views(out_dir, "05_deck", C.preview_views(pid), samples=16)
+    print("DECK OK", round(before[(0.0, 0.0)], 3), "->", round(z_mid, 3))
 
 
 def passage_test(out_dir, do_render):
@@ -254,6 +287,7 @@ def main(out_dir, do_render=True):
                 o = bpy.data.objects[f"CULVERT_{k}_{r}"]
                 o.location.x += (i + 1) * 3.2
         render(os.path.join(out_dir, "03_kinds.png"))
+    deck_test(out_dir, do_render)
     passage_test(out_dir, do_render)
     print("SELFTEST OK")
 

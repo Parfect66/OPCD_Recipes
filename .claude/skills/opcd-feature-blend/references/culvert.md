@@ -72,6 +72,36 @@ from culverts as follows:
 - The approach path running into a passage is Concrete and *is* reshaped; that shows up
   in `concrete_reshaped` and is expected. A Concrete mesh reshaped on the crest is not.
 
+### Deck: bridging false dips over the barrel (all kinds)
+
+OPCD meshes are conformed to the terrain imported from Unity, and the heightmap often
+carries a **false notch** where the watercourse or road runs through the embankment. The
+path, road or motorway over the feature then dips over the barrel. The deck step fixes it,
+and it is on by default (`deck=True`):
+
+- **Zone:** the strip over the barrel, between the two headwall back faces, out to the
+  headwall half-width plus `deck_reach` (6 m) each side.
+- **Target:** at each point along the barrel, the highest untouched surface point within
+  that reach on each side, joined by a straight chord across.
+- **Fill only:** every surface mesh, the Concrete road on top included, is raised to the
+  chord where it is below it, and **never lowered**. A real crest is left alone, and the
+  meshes stay at or above the Unity terrain, so it can't show through.
+- **Taper:** it blends in over up to 2 m from each back face, so there's no step at the
+  headwalls.
+- **Headwall height:** set from the bridged ground, not the dipped ground.
+- **Report:**
+  - plan summary `deck.max_fill_over_barrel_m`;
+  - a plan warning when the dip is over 0.05 m;
+  - `meshes.<name>.deck_fill_m` per mesh after blending. This is separate from
+    `max_fill_m`, so deck fill on the road doesn't trip `concrete_reshaped`.
+- **Tuning:**
+  - `deck_reach`: larger for a wide notch, smaller if a genuine sag in a road
+    across a valley is being straightened;
+  - `deck=False` to switch it off.
+- **Unity terrain:** only the Blender meshes are raised. The Unity terrain keeps its
+  notch under the road, which is harmless because it stays below the meshes. It still
+  needs lowering at the mouths and channels.
+
 ## 2. Anatomy of a mouth unit
 
 Local frame: origin = invert on the headwall front face; +Y outward into the channel;
@@ -156,6 +186,9 @@ flow=None, asset=None, cursor_is="crossing", **overrides)`. `cursor_is` is `cros
 | `max_edge` | 0.35 | densify target near the feature |
 | `smooth` | 4 | Laplacian passes (0 = off) |
 | `search` | 15 | how far either side of the cursor to look for the bed |
+| `deck` | True | bridge a false dip in the surface over the barrel (fill only) |
+| `deck_reach` | 6.0 | m beyond the headwall half-width, each side, to find the undipped road |
+| `deck_step` | 0.5 | sampling step of the deck profile |
 | `segments` | auto | opening resolution (16–48) |
 
 ### Job entry keys (`CULVERTS` in the course job script)
