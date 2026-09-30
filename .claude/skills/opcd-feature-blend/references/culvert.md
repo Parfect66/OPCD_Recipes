@@ -100,7 +100,8 @@ and it is on by default (`deck=True`):
   - `deck=False` to switch it off.
 - **Unity terrain:** only the Blender meshes are raised. The Unity terrain keeps its
   notch under the road, which is harmless because it stays below the meshes. It still
-  needs lowering at the mouths and channels.
+  needs lowering at the mouths and channels: after importing the meshes into Unity, run
+  **Lower terrain under meshes** over the feature (SKILL.md workflow step 7).
 
 ## 2. Anatomy of a mouth unit
 

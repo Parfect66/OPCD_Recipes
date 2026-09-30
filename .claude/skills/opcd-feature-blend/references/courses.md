@@ -51,7 +51,10 @@ barrel. Review the renders and `deck_fill_m` before accepting a re-run, or add
 `"deck": False` to its overrides to reproduce the approved result exactly.
 
 **Open to-dos**
-- [ ] Lower the **Unity terrain** below the new beds at both mouths and their channels
-  (Blender world XY; about 4 yd out along each channel):
+- [ ] Lower the **Unity terrain**: after importing the new meshes into Unity, run
+  **Lower terrain under meshes** over the culvert. Then check that no terrain shows in
+  either mouth or on the aprons, and that the channels reach their beds. Cuts are up to
+  about 1 m at the outlet and 2.4 m at the inlet. For reference (Blender world XY; each
+  channel runs about 4 yd out):
   - Inlet: (-1040.47, -955.00), bed 18.30 m, channel to the SSE.
   - Outlet: (-1046.97, -942.54), bed 17.33 m, channel to the NNW.

@@ -35,7 +35,7 @@
     {
       "id": 6,
       "prompt": "add a road tunnel through the hill behind the 7th green, two lane road, runs roughly east-west",
-      "expected_output": "Job entry kind='tunnel', span about 9 m (asks or states the assumption), bearing 90 or 270 (asks which portal the cursor marks); warns if the hill is too low for opening + cover; mentions the Unity terrain must be lowered at both portals if it is edited in Unity.",
+      "expected_output": "Job entry kind='tunnel', span about 9 m (asks or states the assumption), bearing 90 or 270 (asks which portal the cursor marks); warns if the hill is too low for opening + cover; after the final run, tells the user to import the meshes into Unity and run 'Lower terrain under meshes' over both portals.",
       "files": []
     },
     {
