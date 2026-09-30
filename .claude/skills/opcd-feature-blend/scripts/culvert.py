@@ -26,7 +26,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.09.30-7"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.09.30-8"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
 # Passages carry a path or road THROUGH the embankment: open barrel end to end,
@@ -54,6 +54,12 @@ DEFAULTS = dict(
     segments=None,      # opening resolution, default from size
     corr_pitch=0.068,   # 68 x 13 mm corrugation
     corr_depth=0.013,
+    mouth_invert="point",  # a mouth given as a point (cursor, empty, coordinates): "point" = invert
+                        # at the ground right there, so the structure builds up from it with no
+                        # fill in front; "lowest" = lowest ground within 0.75 m or 1.5 m in front
+    pad=True,           # level pad in front of each mouth, at apron level (cut and fill)
+    pad_len=1.0,        # m the pad runs on past the apron / wing ends
+    pad_fade=1.5,       # m over which the pad blends back into the natural ground
     deck=True,          # bridge false dips in the surface over the barrel (fill only)
     deck_reach=6.0,     # m beyond the headwall half-width, each side, to find the undipped road
     deck_step=0.5,      # m sampling step for the deck profile
@@ -568,12 +574,14 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         """side -1 = towards -d, +1 = towards +d. Returns dict for the mouth."""
         if given is not None:
             s_m = float((np.array(given) - np.array(c)) @ np.array(d))
-            # bed = lowest ground at the mouth or up to 1.5 m in front of it, so a
-            # point dropped on the foot of the bank still gets the channel level
-            zs = [sampler.min_in_radius(*given)]
-            zs += [z for _, z in _profile(sampler, given, (side * d[0], side * d[1]), 0.0, 1.5)]
-            zs = [z for z in zs if z is not None]
-            inv = min(zs) if zs else None
+            inv = sampler.height(*given) if p.get("mouth_invert", "point") == "point" else None
+            if inv is None:
+                # "lowest": lowest ground at the mouth or up to 1.5 m in front of it, so a
+                # point dropped on the foot of the bank still gets the channel level
+                zs = [sampler.min_in_radius(*given)]
+                zs += [z for _, z in _profile(sampler, given, (side * d[0], side * d[1]), 0.0, 1.5)]
+                zs = [z for z in zs if z is not None]
+                inv = min(zs) if zs else None
             if inv is None:
                 raise RuntimeError(f"No surface mesh under the {'inlet' if side < 0 else 'outlet'} point.")
             return dict(s=s_m, invert=inv, bed_s=s_m, note="given point")
@@ -956,6 +964,16 @@ def blend(pid, include_water=False):
             wch = np.where(v <= v_end + 1.0, 1.0, T.smoothstep(1.0 - (v - v_end - 1.0) / p["channel_fade"]))
             wch = np.where(beyond, wch, 0.0)
             z2 = z1 + wch * (np.minimum(z1, tch) - z1)
+            # level pad in front of the mouth at apron level, so the structure sits on flat
+            # ground: full strength over the apron's width to pad_len past the wing ends,
+            # fading out forwards and sideways; starts at the apron end so the wings still
+            # meet the ground they retain
+            if p.get("pad", True):
+                dv_f = np.maximum(v - (v_end + p["pad_len"]), 0.0)
+                du_l = np.maximum(np.abs(u) - half, 0.0)
+                wp = (T.smoothstep(1.0 - dv_f / p["pad_fade"]) * T.smoothstep(1.0 - du_l / p["pad_fade"])
+                      * T.smoothstep((v - v_end) / 0.3))
+                z2 = z2 + wp * (inv - 0.02 - z2)
             # fill-only plateau over the barrel stub so it can never poke out of a low bank
             hw = dims["half_w"]
             v0, v1 = -(p["barrel_depth"] + 0.25), -p["wall"]
