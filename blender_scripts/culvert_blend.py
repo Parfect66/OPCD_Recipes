@@ -23,9 +23,10 @@ How it's laid out:
   - The pipe rises from the outlet at PIPE_GRADE (1 in 100 by default).
   - Headwall width is derived from the batter so the raked wall ends meet
     the ditch side slopes exactly. No wingwalls are needed.
-  - Output is a single object, "Concrete_Culvert_600" (material
-    "Concrete_Culvert"). The "Concrete" prefix means the markpaintexclude
-    recipe op picks it up automatically.
+  - Output is a single object, "CULVERT_600" (material "CULVERT_Concrete").
+    OPCD finds its surface meshes by name, so nothing this script creates
+    contains Fairway/Rough/Concrete/Lake/... in its object name. Join it into
+    the Concrete mesh yourself if you want it exported with the course.
   - The terrain is densified locally first (0.3 m round each end, 0.08 m
     across each headwall face) so the step from ditch bed to wall top lands
     inside the concrete. Shared boundaries between split OPCD meshes are
@@ -86,7 +87,8 @@ APRON_THICKNESS_M = 0.15
 # ---- Terrain blend ---------------------------------------------------------
 TERRAIN_OBJECTS = ()           # explicit terrain object names; empty = auto-detect
 TERRAIN_EXCLUDE_HINTS = ("concrete", "cart", "path", "tree", "bush", "shrub",
-                         "prop", "bridge", "sign", "bench", "water", "culvert",
+                         "prop", "bridge", "sign", "bench", "water", "lake",
+                         "creek", "culvert",
                          "fence", "building")
 BATTER = 1.5                   # side slopes, horizontal per 1 vertical (1:1.5)
 DITCH_BED_CLEARANCE_M = 0.25   # ditch bed half-width = pipe OD/2 + this
@@ -109,7 +111,7 @@ BLEND_GROUP = "CulvertBlend"
 BLEND_FULL_M = 0.15            # |dz| at which the blend weight reaches 1.0
 
 # ---- Material --------------------------------------------------------------
-MATERIAL_NAME = "Concrete_Culvert"
+MATERIAL_NAME = "CULVERT_Concrete"
 TEXTURE_DIR = ""               # folder with *ALBEDO*, *NORMAL*, *ROUGHNESS*, ...
 UV_TILE_M = 2.0                # one texture tile per this many metres
 
@@ -147,7 +149,7 @@ def matches(ob, hints):
 
 
 def is_culvert(ob):
-    return ob.name.startswith("Concrete_Culvert")
+    return ob.name.startswith("CULVERT_")
 
 
 def world_bvh(ob, depsgraph):
@@ -541,7 +543,7 @@ def build_concrete(c, collection):
     for fc in bm.faces:
         fc.material_index = 0
 
-    name = f"Concrete_Culvert_{round(PIPE_BORE_M * 1000)}"
+    name = f"CULVERT_{round(PIPE_BORE_M * 1000)}"
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()

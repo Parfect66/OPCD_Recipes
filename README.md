@@ -170,7 +170,7 @@ The pipe aims at the nearest cart-path mesh and runs across it. The script then:
 - tucks the terrain onto the wall tops;
 - leaves the cart path's footing alone.
 
-The output object is named `Concrete_Culvert_600`, so `markpaintexclude` picks it up. Moved terrain vertices are weighted in a `CulvertBlend` vertex group for follow-up painting.
+The output object is named `CULVERT_600`. Following the OPCD naming rule, it contains no surface-mesh word, so join it into the Concrete mesh yourself if it should export with the course. Moved terrain vertices are weighted in a `CulvertBlend` vertex group for follow-up painting.
 
 ## Testing
 
