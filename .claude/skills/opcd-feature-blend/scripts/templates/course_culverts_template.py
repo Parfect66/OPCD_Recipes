@@ -9,19 +9,20 @@ BLEND = r"H:\Course\Support Files\Blender\course_1_0.blend"           # read onl
 OUT_BLEND = r"H:\Course\Support Files\Blender\changed_blend.blend"  # final run writes here; an existing
                                                                       # one is renamed changed_blend_01 ... first
 RENDER_ENGINE = "CYCLES"   # or "BLENDER_WORKBENCH" (faster on a GPU machine)
+HIDE_IN_RENDERS = []       # e.g. ["Terrain"]: reference meshes to leave out of review renders
 
 CULVERTS = [
     dict(
         name="H4_path_outlet",       # used for render / report file names
-        kind="pipe",                 # pipe | corrugated | arch | box
+        kind="pipe",                 # pipe | corrugated | arch | box | underpass | tunnel
         span=0.6,                    # opening width / diameter (m)
         # rise=0.45,                 # box/arch height; pipes = span
-        cursor_is="outlet",          # what `at` marks: crossing | outlet | inlet
-        at=(123.45, -67.89),         # world XY; None = the 3D cursor saved in BLEND
+        cursor_is="outlet",          # what `at` marks: crossing | outlet | inlet | portal (passages)
+        at=(123.45, -67.89),         # world XY; None = the 3D cursor saved in BLEND (pin it once approved)
         # bearing=35,                # flow direction (deg, 0 = +Y); default = square across the nearest path
         # inlet=(x, y), outlet=(x, y),   # or give both mouths explicitly
         # target="Concrete.003",     # mesh to join into; default = nearest Concrete
-        overrides={},                # e.g. {"wing_angle": 20, "band": 1.5, "max_edge": 0.25}
+        overrides={},                # e.g. {"wing_angle": 20, "band": 1.5, "max_edge": 0.25, "deck_reach": 8}
         edits={},                    # after planning, e.g. {"out_top_rel": 0.8, "in_invert": 41.20}
     ),
 ]

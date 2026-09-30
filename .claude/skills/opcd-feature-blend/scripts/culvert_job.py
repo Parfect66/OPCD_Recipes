@@ -14,7 +14,9 @@ final  does the same, joins each culvert into its Concrete mesh and saves the
        --factory-startup so the OPCD addon is loaded and its scene data round-trips.
 
 The job file is plain Python defining BLEND, OUT_BLEND and CULVERTS - see
-templates/course_culverts_template.py. Exit code 0 = every culvert verified.
+templates/course_culverts_template.py. Optional HIDE_IN_RENDERS lists objects
+(e.g. a hidden reference 'Terrain' heightmap mesh) to leave out of the review
+renders; their render visibility is restored before a final save. Exit code 0 = every culvert verified.
 """
 import json
 import os
@@ -54,6 +56,16 @@ def run(job_path, mode, out_dir):
         raise SystemExit("REFUSED: OUT_BLEND must differ from BLEND")
     bpy.ops.wm.open_mainfile(filepath=blend)
     report = {"blender": bpy.app.version_string, "blend": blend, "mode": mode, "culverts": {}}
+    hidden = []
+    for n in job.get("HIDE_IN_RENDERS", ()):
+        ob = bpy.data.objects.get(n)
+        if ob is None:
+            report.setdefault("hide_in_renders_missing", []).append(n)
+        elif not ob.hide_render:
+            ob.hide_render = True
+            hidden.append(ob)
+    if hidden:
+        report["hidden_in_renders"] = [ob.name for ob in hidden]
     if not bpy.app.version_string.startswith("4.5"):
         report["warning"] = f"Blender {bpy.app.version_string}: OPCD courses are 4.5 files - use 4.5"
     cursor = tuple(bpy.context.scene.cursor.location)[:2]
@@ -85,6 +97,8 @@ def run(job_path, mode, out_dir):
         except Exception as exc:  # keep going so one bad culvert doesn't hide the others
             entry.update(ok=False, error=f"{type(exc).__name__}: {exc}", trace=traceback.format_exc())
             all_ok = False
+    for ob in hidden:
+        ob.hide_render = False
     if mode == "final":
         for pid in T.load_state():
             C.discard_backups(pid)

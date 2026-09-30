@@ -23,6 +23,8 @@ OPCD_Recipes/
 │   └── paint_exclude.py        # Vertex-group exclusion for paint ops
 ├── .claude/skills/
 │   └── opcd-feature-blend/     # Claude skill: add culverts etc. via blender-mcp and blend into OPCD meshes
+├── blender_scripts/            # Standalone Blender 4.5 scripts (Run Script)
+│   └── culvert_blend.py        # Pipe culvert + headwalls + terrain blend at the 3D cursor
 ├── validation/                 # Recipe validation tools
 │   ├── validate_recipes.py     # Validator script (JSON + linting)
 │   └── recipe_schema.json      # Schema reference (symlink or copy)
@@ -153,6 +155,25 @@ Allows recipes to exclude boundary vertices bordering certain materials (e.g., "
 
 See `addon_patches/paint_exclude.py` for code and validation test plan.
 
+## Blender Scripts
+
+### Culvert builder (culvert_blend.py)
+**Fallback only.** Prefer the `opcd-feature-blend` skill below. Use this script when Claude can't reach your Blender, e.g. from a cloud session: it's a paste-into-Blender version, with no verify step and no join into the Concrete mesh.
+
+Builds a precast concrete pipe culvert under a cart path and blends the OPCD terrain around it. The default is a 600 mm bore with raked-end headwalls and aprons at both ends.
+
+1. Save the .blend, then snap the 3D cursor to the ground at the culvert **outlet**.
+2. Open `blender_scripts/culvert_blend.py` in the Scripting workspace. Adjust the CONFIG block if needed: bore, grade, cover, direction mode, texture folder.
+3. Run Script, then read the `Culvert_Report` text block for length, inverts, cover under the path and warnings.
+
+The pipe aims at the nearest cart-path mesh and runs across it. The script then:
+- cuts an outfall ditch in front of each headwall;
+- fills low ground over the barrel to minimum cover;
+- tucks the terrain onto the wall tops;
+- leaves the cart path's footing alone.
+
+The output object is named `CULVERT_600`. Following the OPCD naming rule, it contains no surface-mesh word, so join it into the Concrete mesh yourself if it should export with the course. Moved terrain vertices are weighted in a `CulvertBlend` vertex group for follow-up painting.
+
 ## Testing
 
 Before committing a recipe, test it in Blender:
@@ -214,7 +235,7 @@ See `docs/TROUBLESHOOTING.md` for more.
 
 ## Claude Skill: opcd-feature-blend
 
-`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features (culverts first) to an OPCD V4 course `.blend`. It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
+`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features to an OPCD V4 course `.blend`: culverts (pipe, corrugated, arch, box) and passages (motorway underpass, road tunnel). It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
 
 - **Job script:** each course gets a re-runnable script, e.g. `Blender Scripts\<Course>\<course>_culverts.py`, built from `scripts/templates/`.
 - **Background runs:** the job runs in a background Blender 4.5 via `scripts/culvert_job.py`, never in the open file. `test` mode renders review PNGs; `final` mode saves a new `.blend` and refuses to overwrite.

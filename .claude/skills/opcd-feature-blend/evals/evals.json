@@ -25,6 +25,24 @@
       "prompt": "the outlet headwall on the H4 culvert looks too tall, knock a foot off it and redo it",
       "expected_output": "Edits the H4 entry in Blender Scripts\\<Course>\\<course>_culverts.py (edits.out_top_rel reduced by 0.3048 from the value in the last report), re-runs the background test job, shows the new renders; does not touch the open Blender or hand-patch meshes.",
       "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Cart path needs to go under the motorway embankment here - put in a motorway underpass, 4m wide. Cursor's on the path at the south end.",
+      "expected_output": "Job entry kind='underpass', span=4.0 (rise 3.0 default), cursor_is='portal'; explains the passage runs along the path into the embankment with an open barrel end to end; checks concrete_reshaped shows only the approach path, not the motorway; test renders PortalA/PortalB before any final run.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "add a road tunnel through the hill behind the 7th green, two lane road, runs roughly east-west",
+      "expected_output": "Job entry kind='tunnel', span about 9 m (asks or states the assumption), bearing 90 or 270 (asks which portal the cursor marks); warns if the hill is too low for opening + cover; mentions the Unity terrain must be lowered at both portals if it is edited in Unity.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "the motorway over the underpass has a dip in it where it goes over the top, it's come from the unity terrain",
+      "expected_output": "Explains the deck step bridges false dips over the barrel (fill only, all surface meshes incl. the Concrete road); checks deck.max_fill_over_barrel_m and meshes.*.deck_fill_m in the report; if the dip remains, raises overrides.deck_reach and re-runs the test; notes the Unity terrain itself is unchanged there (harmless, stays below the meshes).",
+      "files": []
     }
   ]
 }
