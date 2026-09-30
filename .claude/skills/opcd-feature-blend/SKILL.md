@@ -67,9 +67,8 @@ copy in place: change the skill's `scripts\` and re-copy.
 - A course `.blend` may hold a hidden **`Terrain`** mesh (2049 × 2049 = 4,198,401 verts): a
   copy of the Unity terrain heightmap. It has no surface keyword, so the kit never edits it,
   but it still renders and shows up as grey ground filling the mouths. Put it in the job's
-  `HIDE_IN_RENDERS`. When the user edits the terrain in Unity, tell them to lower the Unity
-  terrain around both mouths and channels below the new invert, because in GSPro it
-  would otherwise fill the culvert.
+  `HIDE_IN_RENDERS`. The real Unity terrain still sits at the old ground level; see
+  workflow step 7.
 - Library assets: ask at the start of a session whether a library `.blend` should be used,
   and where it is. Procedural is the default.
 - **False dips over the barrel.** Meshes conformed to the Unity terrain often dip where
@@ -134,6 +133,18 @@ copy in place: change the skill's `scripts\` and re-copy.
      every session sees it: job path, `.blend` paths, Blender exe, each feature's entry and
      result, and to-dos such as lowering the Unity terrain. Also save it to project memory
      when the session has one.
+7. **Unity terrain.** Once the user has imported the new meshes into Unity, tell them to
+   run Unity's **Lower terrain under meshes** command over the feature area. Otherwise the
+   terrain, still at the old ground level, fills the mouths, aprons and channels in
+   GSPro. Then ask them to check:
+   - each mouth, looking in from the channel: no terrain inside the opening or across
+     the apron;
+   - each channel: deep enough at the bed. Give the cut depths from the report's
+     `meshes.*.max_cut_m`, because a command that lowers by a fixed offset may not reach
+     the full cut.
+
+   A notch left in the terrain under a road the deck step raised is harmless, because it
+   stays below the meshes. Tick the to-do in `references/courses.md` once it's done.
 
 ### Acting on verify
 
