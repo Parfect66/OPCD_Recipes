@@ -155,6 +155,31 @@ def deck_test(out_dir, do_render=False):
     print("DECK OK", round(before[(0.0, 0.0)], 3), "->", round(z_mid, 3))
 
 
+def deck_near_path_test(out_dir, do_render=False):
+    """Meloneras pipe case: inlet 0.7 m from the path edge, false notch in the path over
+    the barrel. The path must be bridged right up to the headwall and never lowered."""
+    build_scene(notched)
+    con = bpy.data.objects["Concrete_T"]
+    z_before = {(round(v.co.x, 3), round(v.co.y, 3)): v.co.z for v in con.data.vertices}
+    bpy.context.scene.cursor.location = (0.3, -2.2, 0.0)       # 0.7 m south of the path edge
+    pid = C.plan_culvert(kind="corrugated", span=1.0, cursor_is="inlet")
+    plan = T.load_state()[pid]
+    C.build(pid)
+    C.backup(pid, file_copy=False)
+    C.blend(pid)
+    sampler = T.HeightSampler([con])
+    worst = min(sampler.height(0.0, y) - ground(0.0, y) for y in (-1.3, -0.8, 0.0, 0.8, 1.3))
+    assert worst > -0.06, f"path over the pipe still dips by {-worst:.3f} m"
+    lowered = [(k, z_before[k] - v.co.z) for v in con.data.vertices
+               for k in [(round(v.co.x, 3), round(v.co.y, 3))] if k in z_before and v.co.z < z_before[k] - 0.08]
+    assert not lowered, f"path lowered at {len(lowered)} verts, worst {max(d for _, d in lowered):.3f} m"
+    chk = C.verify(pid) and T.load_state()[pid]["verify"]
+    assert chk and not chk["concrete_reshaped"], T.load_state()[pid]["verify"]
+    if do_render:
+        T.render_views(out_dir, "06_deck_near_path", C.preview_views(pid), samples=16)
+    print("DECK NEAR PATH OK: inlet headwall", round(plan["ends"]["in"]["top_rel"], 2), "m above invert")
+
+
 def passage_test(out_dir, do_render):
     """Underpass under the motorway embankment, from the crest and from a portal on the path."""
     build_passage_scene()
@@ -288,6 +313,7 @@ def main(out_dir, do_render=True):
                 o.location.x += (i + 1) * 3.2
         render(os.path.join(out_dir, "03_kinds.png"))
     deck_test(out_dir, do_render)
+    deck_near_path_test(out_dir, do_render)
     passage_test(out_dir, do_render)
     print("SELFTEST OK")
 
