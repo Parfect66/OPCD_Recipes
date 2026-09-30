@@ -303,17 +303,55 @@ def _toe_bed_index(prof, step=0.25, steep=-0.05):
     return min(range(len(zs)), key=lambda j: zs[j])
 
 
+def nearest_path(xy, radius=40.0, window=5.0):
+    """Nearest Concrete (cart path) vertex to ``xy`` and the path's local direction.
+
+    Returns dict(name, point, tangent, dist) or None. The tangent is the principal
+    axis of the path vertices within ``window`` m of the nearest one.
+    """
+    best = None
+    for ob in T.surface_meshes(("Concrete",)):
+        if T.bbox_dist_xy(ob, *xy) > radius:
+            continue
+        me = ob.data
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3) @ np.array(ob.matrix_world.to_3x3()).T + np.array(ob.matrix_world.translation)
+        d = np.hypot(co[:, 0] - xy[0], co[:, 1] - xy[1])
+        i = int(np.argmin(d))
+        if d[i] <= radius and (best is None or d[i] < best[0]):
+            best = (d[i], ob.name, co[:, :2], i)
+    if best is None:
+        return None
+    dist, name, xy2, i = best
+    P = xy2[i]
+    local = xy2[np.hypot(*(xy2 - P).T) <= window]
+    if len(local) >= 3:
+        _, _, vt = np.linalg.svd(local - local.mean(0))
+        t = vt[0]
+    else:
+        t = np.array([1.0, 0.0])
+    return dict(name=name, point=P, tangent=t / np.linalg.norm(t), dist=float(dist))
+
+
 def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, outlet=None,
-                 centre=None, flow=None, asset=None, **overrides):
+                 centre=None, flow=None, asset=None, cursor_is="crossing", **overrides):
     """Read the terrain and propose a culvert. Non-destructive.
 
     span/rise in metres (use T.inch(24), T.mm(600), T.yd(1) ...).
     bearing: culvert axis in degrees (0 = +Y, 90 = +X), direction of flow.
     inlet/outlet: (x, y) or the name of an empty; overrides auto mouth finding.
     centre: (x, y); default = 3D cursor.
+    cursor_is: what the cursor (or ``centre``) marks -
+        "crossing": the middle of the bank/path the culvert passes under;
+        "outlet" / "inlet": that mouth. The culvert then runs square across the
+        nearest cart path (or along ``bearing``) and the other mouth is found on
+        the far side.
     flow: None (auto: water runs from the higher bed), or "as_bearing".
     asset: optional ("/path/lib.blend", "ObjectName") to use a library mouth unit.
     """
+    if cursor_is not in ("crossing", "inlet", "outlet"):
+        raise ValueError('cursor_is must be "crossing", "inlet" or "outlet"')
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}")
     p = dict(DEFAULTS); p.update(overrides)
@@ -340,7 +378,31 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         pin, pout = _pt("CULVERT_IN"), _pt("CULVERT_OUT")
 
     axis_note = None
-    if pin and pout:
+    mouth_mode = cursor_is != "crossing" and not (pin and pout)
+    if mouth_mode:
+        m = np.array(c, float)
+        path = nearest_path(tuple(m))
+        if bearing is not None:
+            d = _axis_from_bearing(bearing)
+            axis_note = "from given bearing"
+        elif path is not None:
+            t = path["tangent"]
+            n = np.array([-t[1], t[0]])
+            if (m - path["point"]) @ n < 0:
+                n = -n                       # n points from the path towards the cursor
+            d = tuple(n if cursor_is == "outlet" else -n)
+            axis_note = (f"AUTO - square across {path['name']} ({T.fmt_len(path['dist'])} from the "
+                         f"cursor); confirm with the user")
+        else:
+            raise RuntimeError("No Concrete mesh within 40 m of the cursor - give a bearing.")
+        dv = np.array(d)
+        ref = path["point"] if path is not None else m - dv * (1 if cursor_is == "outlet" else -1) * 3.0
+        c = tuple(m + ((ref - m) @ dv) * dv)  # on the axis, level with the path edge
+        if cursor_is == "outlet":
+            pout = tuple(m)
+        else:
+            pin = tuple(m)
+    elif pin and pout:
         dv = np.array(pout) - np.array(pin)
         d = tuple(dv / np.linalg.norm(dv))
         c = tuple((np.array(pin) + np.array(pout)) / 2)
@@ -362,7 +424,14 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
         """side -1 = towards -d, +1 = towards +d. Returns dict for the mouth."""
         if given is not None:
             s_m = float((np.array(given) - np.array(c)) @ np.array(d))
-            inv = sampler.min_in_radius(*given)
+            # bed = lowest ground at the mouth or up to 1.5 m in front of it, so a
+            # point dropped on the foot of the bank still gets the channel level
+            zs = [sampler.min_in_radius(*given)]
+            zs += [z for _, z in _profile(sampler, given, (side * d[0], side * d[1]), 0.0, 1.5)]
+            zs = [z for z in zs if z is not None]
+            inv = min(zs) if zs else None
+            if inv is None:
+                raise RuntimeError(f"No surface mesh under the {'inlet' if side < 0 else 'outlet'} point.")
             return dict(s=s_m, invert=inv, bed_s=s_m, note="given point")
         prof = [(s, z) for s, z in _profile(sampler, c, d, 0.0, side * p["search"]) if z is not None]
         if not prof:
@@ -387,8 +456,11 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
     ends = {}
     raw = {-1: find_end(-1, pin), 1: find_end(1, pout)}
     # flow: water runs from the higher bed to the lower
-    if flow == "as_bearing" or (pin and pout):
+    if flow == "as_bearing" or (pin and pout) or mouth_mode:
         up, dn = -1, 1
+        if raw[-1]["invert"] < raw[1]["invert"]:
+            warnings.append(f"inlet bed is {raw[1]['invert'] - raw[-1]['invert']:.2f} m LOWER than the outlet - "
+                            "water would run the other way; confirm the flow direction or edit the inverts")
     else:
         up, dn = (-1, 1) if raw[-1]["invert"] >= raw[1]["invert"] else (1, -1)
     length = abs(raw[1]["s"] - raw[-1]["s"])

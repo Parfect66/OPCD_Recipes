@@ -27,9 +27,12 @@ terrain sheets, and UV/colour-attribute mismatches on join.
   pick it up. Features are named `CULVERT_<id>_IN/OUT` and live in the `OPCD_Features`
   collection until they are joined. Mesh backups are orphan datablocks (`BAK_...`, fake
   user), not objects.
-- The user places the **3D cursor** on the crossing, usually on the cart path or bank
-  over the run-off. The run-off is generally a depression in the ground. **The user
-  identifies it**, so don't assume a detected channel is correct without confirming.
+- The user places the **3D cursor** where the feature is to be built. **Ask what it
+  marks** if they haven't said. It can be the *crossing* (on the cart path or bank the
+  culvert passes under), or one *mouth*. A common case is the cursor at the outlet in
+  the run-off, with the culvert running under the nearby cart path. The run-off is
+  generally a depression in the ground. **The user identifies it**, so don't assume a
+  detected channel is correct without confirming.
 - Culverts are **concrete** and end up in the Concrete mesh with its material. The barrel
   is modelled **1 yard deep** behind each mouth and then capped. Nothing is modelled
   in between.
@@ -93,7 +96,9 @@ Turn the request into parameters. For example, "600 mm pipe", "24 inch corrugate
 `references/culvert.md` for sizes and defaults, and ask if the type or size is missing.
 
 ```python
-pid = C.plan_culvert(kind="pipe", span=T.mm(600))                  # axis auto-detected
+pid = C.plan_culvert(kind="pipe", span=T.mm(600))                  # cursor on the crossing, axis auto
+pid = C.plan_culvert(kind="pipe", span=T.mm(600), cursor_is="outlet")  # cursor at the outlet: runs square
+                                                                   # under the nearest cart path
 pid = C.plan_culvert(kind="arch", span=T.ft(4), bearing=35)        # axis given, flow along bearing
 pid = C.plan_culvert(kind="box", span=1.2, rise=0.9,
                      inlet="CULVERT_IN", outlet="CULVERT_OUT")     # user-placed mouths

@@ -57,14 +57,23 @@ Local frame: origin = invert on the headwall front face; +Y outward into the cha
 
 ## 3. How the plan is derived
 
-1. **Axis.** One of three sources, in order of preference: the `inlet`/`outlet` points or
-   the `CULVERT_IN`/`CULVERT_OUT` empties, then `bearing`, then AUTO. AUTO finds the
-   bearing through the cursor where the ground falls away on *both* sides, i.e. along
-   the run-off. It always needs confirming.
+1. **Axis.** One of four sources, in order of preference:
+   - the `inlet`/`outlet` points or the `CULVERT_IN`/`CULVERT_OUT` empties;
+   - `bearing`;
+   - with `cursor_is="outlet"` or `"inlet"`: square across the nearest Concrete (cart
+     path) mesh. The cursor becomes that mouth, and the other mouth is found on the far
+     side of the path;
+   - AUTO (cursor on the crossing): the bearing through the cursor where the ground falls
+     away on *both* sides, i.e. along the run-off.
+
+   Anything marked AUTO needs confirming with the user.
 2. **Bed at each side.** Walking out from the crest, it finds where the embankment
    stops falling steeply (the toe) and takes the lowest point within 1.5 m of it. It
    deliberately does *not* take the lowest point in the search distance, which on a
    falling ditch would be 15 m away.
+   For a mouth given as a point (cursor, empty or coordinates), the bed is the lowest
+   ground at the point or up to 1.5 m in front of it. So a cursor dropped on the foot of
+   the bank still gets the channel level.
 3. **Mouth position.** Walking back from the bed, the first point where the bank is at
    least opening + `cover_min` high becomes the headwall *back* face. The front face is
    one wall thickness outward. If the bank never gets that high, a warning is raised and

@@ -150,12 +150,20 @@ def main(out_dir, do_render=True):
     assert len(ob.data.materials) == 1
     C.restore(pid)
     assert len(bpy.data.objects["Concrete_T"].data.vertices) < 2000, "restore did not put the path back"
+    # cursor on the outlet mouth: culvert must run square under the path, inlet found beyond it
+    bpy.context.scene.cursor.location = (0.3, 3.8, 0.0)
+    k = C.plan_culvert(kind="pipe", span=T.mm(600), cursor_is="outlet")
+    kp = T.load_state()[k]
+    assert abs(kp["axis"][1] - 1) < 0.05, f"outlet mode axis should point +Y, got {kp['axis']}"
+    assert abs(kp["ends"]["out"]["mouth"][1] - 3.8) < 1e-6 and kp["ends"]["in"]["mouth"][1] < -1.5, kp["ends"]
+    assert kp["fall"] > 0, kp["fall"]
+    bpy.context.scene.cursor.location = (0.3, 0.2, 0.6)
     for kind in ("corrugated", "arch", "box"):
         k = C.plan_culvert(kind=kind, span=T.mm(900) if kind != "corrugated" else T.mm(600), bearing=0)
         C.build(k)
     if do_render:
         # separate the extra kinds so they are visible side by side
-        for i, k in enumerate(("C02", "C03", "C04")):
+        for i, k in enumerate(("C03", "C04", "C05")):
             for r in ("IN",):
                 o = bpy.data.objects[f"CULVERT_{k}_{r}"]
                 o.location.x += (i + 1) * 3.2
