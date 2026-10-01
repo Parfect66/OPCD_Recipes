@@ -84,6 +84,27 @@ separate objects (not joined into Concrete), at the user's request.
 | C09 | 1.5 x 1.125 m box | inlet at cursor (-1028.36, -952.55) inv 16.88; outlet auto (-1037.27, -935.25) inv 13.59 | `band` 1.5, `footing` 1.0 | 21 yd, fall 1 in 6; path not reshaped |
 | C14 | arched buggy tunnel 3.0 x 2.6 m (`tunnel`) | portals dragged, then moved back from the path: (-1053.2, -945.4) floor 16.78; (-1041.7, -963.8) floor 17.39 | `channel_fade` 4.0, `channel_batter` 1.0 | 23.7 yd, floor grade 2.8%; path raised up to 3.75 m, not cut. Earlier tries (C11-C13) cut the path by up to 3.2 m 15 m west of the north portal; see "Passages" in live-mcp.md |
 
+**Live MCP session, 1 Oct 2026** (same open file, kit 2026.09.30-8, still unsaved at the time of writing):
+
+| plan | what | mouths (Blender XY) | settings | notes |
+|---|---|---|---|---|
+| C20 | arched buggy tunnel 3.0 x 2.4 m (`tunnel`), `CULVERT_C20_IN/OUT`, separate objects | entrance at the cursor (-398.69, -1078.06) floor 34.24; exit dragged to (-398.51, -1052.63) floor 34.45 | `flow="as_bearing"`, `channel_fade` 2.0, `channel_batter` 1.0, `band` 1.5, `footing` 1.0, `in_barrel_rise=0`, `out_barrel_rise=0` | 27.8 yd, bearing 0.4 (due north), floor falls 0.2 m. Runs under the large cart path `Spline_path318_piece1_1_Concrete` (raised 0.55 m, not cut). Stub path `Spline_path100_piece1_7` and `piece2` raised up to 2.7 m, cut up to 0.6 m at the mouths. Roof cover only 0.05-0.3 m (low hill) |
+| C24 | 1.0 m round **stone-faced** pipe (`kind="pipe"`), `CULVERT_C24_IN/OUT`, separate objects | upper end (inlet) at the cursor (-422.45, -1142.85) inv 35.76; lower end dragged to (-437.53, -1120.07) inv 34.03 | `band` 1.5, `footing` 1.0 | 29.9 yd, bearing 326.5, fall 1.73 m (1 in 16). Verify OK, no Concrete reshaped. Rough `Spline_path349_piece2_7` cut 1.6 / filled 1.7 m; Custom4 `Spline_path393` filled 2.2 m. Material `Culvert_Stone` (procedural granite blocks, UVs 0.5/m). Backup `meloneras_1_pre-C24_01.blend` |
+
+
+C24 notes:
+- The user dragged both arrows, and the arrow nearest the cursor sat on the bank 1.6 m above the cursor ground. Plan the cursor end with `inlet=(cursor.x, cursor.y)`, not the arrow, so the invert is the cursor ground. Check which end is higher before choosing inlet/outlet (the first plan had them reversed: "inlet bed LOWER" warning).
+- Stone finish is Blender-only (procedural). For Unity/GSPro give it a real stone image on the UVs or bake the material.
+- It is not an arch like the user's reference photo: only the texture was asked for. Add `kind="arch"` if they want the shape too.
+- To-do: add C24 to `meloneras_culverts.py` (inlet at cursor, outlet above) and lower the Unity terrain under it.
+
+Lessons from C20 (also in live-mcp.md):
+- Cursor on a path stub: the auto "along the path" axis ran 56 m the wrong way. The user wanted the axis across the large path, so use `markers()` arrows and let them place both mouths.
+- Passage floor defaults follow the crest (`barrel_rise` up to +1.6 m, a hump-backed floor that poked through the ground). Set `in_barrel_rise=0, out_barrel_rise=0` for a level floor.
+- A 0.35 m back-of-headwall flush line is not a gap: those boundary verts sit on the culvert surface.
+- Smoothing the ground over a built passage: average vertex Z by XY across all touched surface meshes (pure function of XY, so seams stay closed), pin verts within 0.6 m of the culvert, never lower over the barrel, then sync any coincident cross-mesh seam verts to one Z (including untouched neighbours such as `Spline_path278_island0_piece3_1_Custom4`). Result: seam dz 0, cover over roof >= 0.05 m. Mesh copies `BAK_C20smooth_*` hold the pre-smooth state.
+- Abandoned plans C15-C19 (portal at the cursor running south along the stub) were restored; their `meloneras_1_pre-C16/C18/C19_01.blend` backups are still on disk.
+
 Leftovers in the scene: `CULVERT_C02_OUT` (stray, from an abandoned plan) and `CULVERT_C05_IN/OUT`,
 `CULVERT_C07_IN/OUT` etc. are the real mouth units; the marker empties `CULVERT_IN/OUT` were deleted.
 
@@ -99,5 +120,6 @@ Leftovers in the scene: `CULVERT_C02_OUT` (stray, from an abandoned plan) and `C
   backup copy), then add C03, C05, C07, C09 and C14 to `meloneras_culverts.py` before any job re-run, using the
   mouths above (`at` / `inlet` / `outlet`, `flow="as_bearing"` where noted). Their Unity terrain lowering is also
   outstanding; C03's outlet and C14's portals need the deepest cuts (up to ~4 m).
+- [ ] Add C20 to `meloneras_culverts.py` (mouths above, `flow="as_bearing"`, barrel rises 0) and lower the Unity terrain under it (deepest at the entrance cutting).
 - [ ] Delete old `meloneras_1_pre-C*_01.blend` backup copies in `H:\Meloneras_Latest\Support Files\Blender\` once
   the user is happy (one per plan, incl. abandoned plans).
