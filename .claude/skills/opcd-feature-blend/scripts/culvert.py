@@ -26,7 +26,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.09.30-8"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.10.01-1"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
 # Passages carry a path or road THROUGH the embankment: open barrel end to end,
@@ -1083,6 +1083,70 @@ def verify(pid):
     T.save_state(st)
     T.emit({"id": pid, "status": plan["status"], "checks": checks})
     return ok
+
+
+def apply_stone(pid, density=0.5):
+    """Give both mouth units of a plan a procedural stone-block material and UVs.
+
+    For culverts that stay separate objects (not joined into Concrete). The material is
+    Blender-only: for Unity/GSPro put a real stone image on the UVs or bake it.
+    """
+    plan = T.load_state()[pid]
+    mat = bpy.data.materials.get("Culvert_Stone") or bpy.data.materials.new("Culvert_Stone")
+    if not mat.use_nodes or not any(n.type == "TEX_VORONOI" for n in mat.node_tree.nodes):
+        mat.use_nodes = True
+        N, L = mat.node_tree.nodes, mat.node_tree.links
+        N.clear()
+        out = N.new("ShaderNodeOutputMaterial")
+        bsdf = N.new("ShaderNodeBsdfPrincipled")
+        tc = N.new("ShaderNodeTexCoord")
+        mp = N.new("ShaderNodeMapping")
+        mp.inputs["Scale"].default_value = (1.1, 1.1, 1.1)
+        vor = N.new("ShaderNodeTexVoronoi")
+        vor.inputs["Scale"].default_value = 2.2
+        vor2 = N.new("ShaderNodeTexVoronoi")
+        vor2.feature = "DISTANCE_TO_EDGE"
+        vor2.inputs["Scale"].default_value = 2.2
+        noise = N.new("ShaderNodeTexNoise")
+        noise.inputs["Scale"].default_value = 12
+        noise.inputs["Detail"].default_value = 6
+        ramp = N.new("ShaderNodeValToRGB")
+        ramp.color_ramp.elements[0].color = (0.05, 0.055, 0.07, 1)
+        ramp.color_ramp.elements[1].color = (0.38, 0.4, 0.45, 1)
+        tone = N.new("ShaderNodeMix")
+        tone.data_type, tone.blend_type = "RGBA", "MULTIPLY"
+        tone.inputs["Factor"].default_value = 0.5
+        edge = N.new("ShaderNodeMath")
+        edge.operation = "GREATER_THAN"
+        edge.inputs[1].default_value = 0.015
+        joint = N.new("ShaderNodeMix")
+        joint.data_type = "RGBA"
+        joint.inputs[6].default_value = (0.12, 0.1, 0.09, 1)
+        bump = N.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = 0.8
+        L.new(tc.outputs["Object"], mp.inputs["Vector"])
+        for v in (vor, vor2, noise):
+            L.new(mp.outputs["Vector"], v.inputs["Vector"])
+        L.new(vor.outputs["Color"], ramp.inputs["Fac"])
+        L.new(ramp.outputs["Color"], tone.inputs[6])
+        L.new(noise.outputs["Color"], tone.inputs[7])
+        L.new(tone.outputs[2], joint.inputs[7])
+        L.new(vor2.outputs["Distance"], edge.inputs[0])
+        L.new(edge.outputs["Value"], joint.inputs["Factor"])
+        L.new(joint.outputs[2], bsdf.inputs["Base Color"])
+        bsdf.inputs["Roughness"].default_value = 0.85
+        L.new(vor2.outputs["Distance"], bump.inputs["Height"])
+        L.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        L.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        mat.diffuse_color = (0.38, 0.4, 0.44, 1)
+    for n in plan["objects"].values():
+        ob = bpy.data.objects[n]
+        ob.data.materials.clear()
+        ob.data.materials.append(mat)
+        for p in ob.data.polygons:
+            p.material_index = 0
+        T.box_project_uv(ob, "UVMap", density)
+    return mat.name
 
 
 def finalise(pid, target=None):

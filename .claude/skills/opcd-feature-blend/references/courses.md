@@ -96,7 +96,8 @@ C24 notes:
 - The user dragged both arrows, and the arrow nearest the cursor sat on the bank 1.6 m above the cursor ground. Plan the cursor end with `inlet=(cursor.x, cursor.y)`, not the arrow, so the invert is the cursor ground. Check which end is higher before choosing inlet/outlet (the first plan had them reversed: "inlet bed LOWER" warning).
 - Stone finish is Blender-only (procedural). For Unity/GSPro give it a real stone image on the UVs or bake the material.
 - It is not an arch like the user's reference photo: only the texture was asked for. Add `kind="arch"` if they want the shape too.
-- To-do: add C24 to `meloneras_culverts.py` (inlet at cursor, outlet above) and lower the Unity terrain under it.
+- Job entry `Meloneras_stone_01` added to `meloneras_culverts.py` (1 Oct 2026, kit 2026.10.01-1: new job keys `stone=True` and `join=False`, new `C.apply_stone`). With the inverts pinned (35.756 / 34.031) the geometry matches the live build exactly (soffits 36.756 / 35.031), but a background **test run reports `ok: false`**: `unsealed_by_m` 9.99 means no ground was found just outside the mouth outline in the **saved** `meloneras_1.blend`, whose ground differs from the open scene. Treat the live build as the approved result; save the open file and point `BLEND` at it before relying on the job. Also note the saved file's ground at the cursor is 37.65 m, not 35.76 m.
+- To-do: lower the Unity terrain under C24.
 
 Lessons from C20 (also in live-mcp.md):
 - Cursor on a path stub: the auto "along the path" axis ran 56 m the wrong way. The user wanted the axis across the large path, so use `markers()` arrows and let them place both mouths.

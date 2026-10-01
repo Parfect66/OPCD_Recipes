@@ -85,7 +85,9 @@ def run(job_path, mode, out_dir):
             ok = C.verify(pid)
             entry["renders"] = T.render_views(out_dir, name, C.preview_views(pid),
                                               engine=job.get("RENDER_ENGINE", "CYCLES"))
-            if mode == "final" or spec.get("finalise_in_test", True):
+            if spec.get("stone"):
+                C.apply_stone(pid)
+            if spec.get("join", True) and (mode == "final" or spec.get("finalise_in_test", True)):
                 C.finalise(pid, target=spec.get("target"))
             plan = T.load_state()[pid]
             entry.update(id=pid, ok=ok, status=plan["status"], axis_bearing=round(plan["bearing"], 1),
