@@ -30,8 +30,9 @@ across calls and sessions.
    outlet="CULVERT_OUT"`. Tweak with `C.edit_plan(pid, out_top_rel=..., ...)`.
 3. **Build.** Non-destructive. `C.build(pid)`, then `C.frame(pid, "in")` / `"out"` and a
    screenshot of each. The user approves.
-4. **Backup, blend, verify.** `C.backup(pid)` writes an incremental `.blend` copy and
-   orphan mesh copies. Then `C.blend(pid)` and `C.verify(pid)`. Act on the checks (see
+4. **Backup, blend, tidy, verify.** `C.backup(pid)` writes an incremental `.blend` copy and
+   orphan mesh copies. Then `C.blend(pid)`, `C.tidy(pid)` (cleans the topology and smooths heights round the
+   structure, always run it) and `C.verify(pid)`. Act on the checks (see
    the table in SKILL.md). If `blend` fails partway through, run `C.restore(pid)` and
    `C.backup(pid)` before retrying.
 5. **Finalise.** Only after approval. `C.finalise(pid)` joins the culvert into the
@@ -89,3 +90,4 @@ See `blender-mcp.md` for tool behaviour and API gotchas.
 - **Level floor:** passage floors follow the crest (`barrel_rise` up to +1.6 m), which can poke through low ground. `C.edit_plan(pid, in_barrel_rise=0.0, out_barrel_rise=0.0)` makes it level.
 - **`C.verify` prints and returns None**; `C.plan_culvert` returns a JSON string. Capture stdout to parse.
 - **Smoothing after a build:** average Z by XY across all touched surface meshes, pin verts within 0.6 m of the culvert, never lower over the barrel, then sync coincident cross-mesh seam verts (incl. untouched neighbours) to one Z. Check seam dz = 0 and roof cover afterwards.
+- **House style:** pass `style="slim"` to every `C.plan_culvert` call (see SKILL.md). Only `kind`, `span` and `rise` vary.

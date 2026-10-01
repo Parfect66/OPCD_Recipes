@@ -82,6 +82,8 @@ def run(job_path, mode, out_dir):
             C.build(pid)
             C.backup(pid, target=spec.get("target"), file_copy=False)
             C.blend(pid, include_water=spec.get("include_water", False))
+            if spec.get("tidy", True):
+                C.tidy(pid)   # even out the topology and heights round the structure (kit -3)
             ok = C.verify(pid)
             entry["renders"] = T.render_views(out_dir, name, C.preview_views(pid),
                                               engine=job.get("RENDER_ENGINE", "CYCLES"))
