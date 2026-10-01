@@ -72,6 +72,14 @@ from culverts as follows:
 - The approach path running into a passage is Concrete and *is* reshaped; that shows up
   in `concrete_reshaped` and is expected. A Concrete mesh reshaped on the crest is not.
 
+### Style (kit 2026.10.01-2)
+
+`style="slim"` (a `plan_culvert` argument, or a job-entry override) applies the user's preferred headwall: `wing_len` 1.5, `wing_angle` 20, `wall` 0.25, `apron_thk` 0.1. Explicit overrides still win. It is the house style for all new culverts; only `kind`, `span` and `rise` change. A wing length near zero fails verify (flush error up to 0.84 m); 1.5 m passes.
+
+### Tidy (kit 2026.10.01-3)
+
+`C.tidy(pid)` runs after `blend` and before `verify` (the job does this by default; `tidy=False` skips it). For each touched surface mesh within `radius` 10 m of the mouths or 8 m of the barrel it joins triangles into quads, relaxes free vertices sideways (8 passes) while re-projecting their heights onto the pre-relax surface, then smooths heights (8 passes, factor 0.45, at most 0.5 m, never lowering over the barrel). Concrete (cart path) meshes only get quads and sideways relaxation, so their heights stay. Mesh borders and anything within 0.4 m of the structure are pinned, so seams and wall contact hold. Finally coincident vertices of neighbouring meshes are made equal (seam dz 0). Edge-length spread barely changes because the dense-to-coarse gradient stays; the visible gain is the quads and the softened creases.
+
 ### Deck: bridging false dips over the barrel (all kinds)
 
 OPCD meshes are conformed to the terrain imported from Unity, and the heightmap often

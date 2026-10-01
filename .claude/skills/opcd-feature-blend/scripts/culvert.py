@@ -26,7 +26,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.10.01-1"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.10.01-3"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
 # Passages carry a path or road THROUGH the embankment: open barrel end to end,
@@ -64,6 +64,13 @@ DEFAULTS = dict(
     deck_reach=6.0,     # m beyond the headwall half-width, each side, to find the undipped road
     deck_step=0.5,      # m sampling step for the deck profile
 )
+
+# Named looks on top of DEFAULTS and KIND_DEFAULTS (plan_culvert(..., style="slim")).
+# "slim" is the user's preferred look (C35, Meloneras, 1 Oct 2026): a plain headwall with short wings
+# and a thin wall; only the opening (arch / box / pipe, any size) changes between culverts.
+STYLES = {
+    "slim": dict(wing_len=1.5, wing_angle=20.0, wall=0.25, apron_thk=0.1),
+}
 
 # Per-kind defaults on top of DEFAULTS (overrides still win).
 KIND_DEFAULTS = {
@@ -481,7 +488,10 @@ def plan_culvert(kind="pipe", span=0.6, rise=None, bearing=None, inlet=None, out
     if cursor_is == "portal":
         cursor_is = "inlet"
     passage = kind in PASSAGE_KINDS
-    p = dict(DEFAULTS); p.update(KIND_DEFAULTS.get(kind, {})); p.update(overrides)
+    style = overrides.pop("style", None)
+    if style is not None and style not in STYLES:
+        raise ValueError(f"style must be one of {tuple(STYLES)}")
+    p = dict(DEFAULTS); p.update(KIND_DEFAULTS.get(kind, {})); p.update(STYLES.get(style, {})); p.update(overrides)
     rise = rise or (span if kind in ("pipe", "corrugated") else
                     span * 0.75 if kind in ("box", "underpass") else
                     span * 0.7 if kind == "tunnel" else span * 0.8)
@@ -1147,6 +1157,176 @@ def apply_stone(pid, density=0.5):
             p.material_index = 0
         T.box_project_uv(ob, "UVMap", density)
     return mat.name
+
+
+def _smooth01(d, d0, d1):
+    """1 inside d0, 0 beyond d1, smoothstep between."""
+    if d <= d0:
+        return 1.0
+    if d >= d1:
+        return 0.0
+    t = (d1 - d) / (d1 - d0)
+    return t * t * (3 - 2 * t)
+
+
+def tidy(pid, radius=10.0, axis_reach=8.0, iterations=8, quads=True, z_passes=8, z_clamp=0.5, z_factor=0.45):
+    """Clean the topology the blend leaves round a built culvert. Call after blend(), before verify().
+
+    blend() densifies and re-triangulates the ground, which leaves a messy fan of thin triangles. For
+    every touched surface mesh this: joins triangles into quads inside the zone, relaxes the free
+    vertices sideways (even spacing) while re-projecting their height onto the pre-relax surface, then
+    smooths heights gently (never lowering over the barrel) and finally makes coincident vertices of
+    neighbouring meshes agree exactly (cart paths, i.e. Concrete meshes, keep their heights: only quads and
+    sideways relaxation). Pinned: mesh borders (seams) and anything within 0.4 m of the
+    structure, so the ground still meets the walls. Zone = ``radius`` m round the mouth units plus
+    ``axis_reach`` m either side of the barrel.
+    """
+    from mathutils.bvhtree import BVHTree
+    from mathutils.kdtree import KDTree
+    st = T.load_state()
+    plan = st[pid]
+    if plan["status"] not in ("blended", "finalised"):
+        raise RuntimeError(f"Status is {plan['status']}; blend() first.")
+    cobjs = [bpy.data.objects[n] for n in plan["objects"].values()]
+    cv, ct = [], []
+    for ob in cobjs:
+        me = ob.data
+        me.calc_loop_triangles()
+        base = len(cv)
+        cv += [tuple(ob.matrix_world @ v.co) for v in me.vertices]
+        ct += [tuple(base + i for i in t.vertices) for t in me.loop_triangles]
+    cbvh = BVHTree.FromPolygons(cv, ct)
+    ckd = KDTree(len(cv))
+    for i, q in enumerate(cv):
+        ckd.insert((q[0], q[1], 0.0), i)
+    ckd.balance()
+    a = np.array(plan["ends"]["in"]["mouth"], float)
+    b = np.array(plan["ends"]["out"]["mouth"], float)
+    ab = b - a
+    L2 = max(float(ab @ ab), 1e-9)
+    half = plan["span"] / 2 + plan["params"]["wall"] + 0.5
+
+    def seg(x, y):
+        p = np.array([x, y]) - a
+        t = min(max(float(p @ ab) / L2, 0.0), 1.0)
+        return float(np.linalg.norm(p - t * ab)), t
+
+    def weight(x, y):
+        d1 = ckd.find((x, y, 0.0))[2]
+        d2, _ = seg(x, y)
+        return max(_smooth01(d1, 0.6 * radius, radius), _smooth01(d2, 0.6 * axis_reach, axis_reach))
+
+    report = {}
+    for name in plan["backup"]["meshes"]:
+        ob = bpy.data.objects.get(name)
+        if ob is None or ob.type != "MESH":
+            continue
+        bm = T._bm_world(ob)
+        bvh0 = BVHTree.FromBMesh(bm)
+        bm.verts.ensure_lookup_table()
+        w = np.array([weight(v.co.x, v.co.y) for v in bm.verts])
+        if not (w > 0.0).any():
+            bm.free()
+            continue
+
+        def spread():
+            ed = [e.calc_length() for e in bm.edges if w[e.verts[0].index] > 0.5 and w[e.verts[1].index] > 0.5]
+            return (float(np.std(ed) / max(np.mean(ed), 1e-9)) if ed else 0.0), len(ed)
+
+        cv0, _n0 = spread()
+        tris0 = sum(1 for f in bm.faces if len(f.verts) == 3 and all(w[v.index] > 0.5 for v in f.verts))
+        if quads:
+            fs = [f for f in bm.faces if len(f.verts) == 3 and all(w[v.index] > 0.5 for v in f.verts)]
+            if fs:
+                bmesh.ops.join_triangles(bm, faces=fs, cmp_seam=False, cmp_sharp=False, cmp_uvs=False,
+                                         cmp_vcols=False, cmp_materials=False,
+                                         angle_face_threshold=math.radians(25),
+                                         angle_shape_threshold=math.radians(60))
+        bm.verts.ensure_lookup_table()
+        w = w[:len(bm.verts)]
+        free = []
+        for v in bm.verts:
+            wi = w[v.index]
+            if wi <= 0.0 or v.is_boundary or not v.link_edges:
+                continue
+            if cbvh.find_nearest(v.co)[3] < 0.4:
+                continue
+            free.append(v)
+        for _ in range(iterations):
+            new = []
+            for v in free:
+                m = np.mean([(e.other_vert(v).co.x, e.other_vert(v).co.y) for e in v.link_edges], axis=0)
+                k = 0.5 * w[v.index]
+                new.append((v.co.x + k * (m[0] - v.co.x), v.co.y + k * (m[1] - v.co.y)))
+            for v, (x, y) in zip(free, new):
+                v.co.x, v.co.y = x, y
+        z0 = {}
+        for v in free:
+            hit = bvh0.ray_cast(Vector((v.co.x, v.co.y, v.co.z + 30.0)), Vector((0, 0, -1)), 80.0)
+            if hit[0] is not None:
+                v.co.z = hit[0].z
+            z0[v.index] = v.co.z
+        over = set()
+        for v in free:
+            d, t = seg(v.co.x, v.co.y)
+            if d < half and 0.0 < t < 1.0:
+                over.add(v.index)
+        for _ in range(0 if "Concrete" in name else z_passes):
+            new = []
+            for v in free:
+                m = sum(e.other_vert(v).co.z for e in v.link_edges) / len(v.link_edges)
+                z = v.co.z + z_factor * w[v.index] * (m - v.co.z)
+                z = min(max(z, z0[v.index] - z_clamp), z0[v.index] + z_clamp)
+                if v.index in over:
+                    z = max(z, z0[v.index])
+                new.append(z)
+            for v, z in zip(free, new):
+                v.co.z = z
+        cv1, n1 = spread()
+        quads1 = sum(1 for f in bm.faces if len(f.verts) == 4 and all(w[v.index] > 0.5 for v in f.verts))
+        report[name] = {"zone_edges": n1, "edge_length_cv_before": round(cv0, 3),
+                        "edge_length_cv_after": round(cv1, 3), "triangles_before": tris0,
+                        "quads_after": quads1, "verts_relaxed": len(free)}
+        T._bm_write(bm, ob)
+    # coincident vertices of neighbouring surface meshes must agree exactly (no gaps at seams)
+    surf = T.surface_meshes(exclude=T.WATER_KEYWORDS)
+    mid = (a + b) / 2
+    reach = float(np.sqrt(L2)) / 2 + radius + 2.0
+    for _ in range(3):
+        data, pts = {}, []
+        for ob in surf:
+            me = ob.data
+            co = np.empty(len(me.vertices) * 3)
+            me.vertices.foreach_get("co", co)
+            co = co.reshape(-1, 3)
+            data[ob.name] = co
+            idx = np.nonzero(np.hypot(co[:, 0] - mid[0], co[:, 1] - mid[1]) < reach)[0]
+            pts += [(ob.name, int(i)) for i in idx]
+        kd = KDTree(max(len(pts), 1))
+        for k, (n, i) in enumerate(pts):
+            kd.insert((data[n][i][0], data[n][i][1], 0.0), k)
+        kd.balance()
+        changed, fixed = set(), 0
+        for k, (n, i) in enumerate(pts):
+            p = data[n][i]
+            grp = [pts[j] for _, j, _ in kd.find_range((p[0], p[1], 0.0), 0.003)]
+            if len({g[0] for g in grp}) > 1:
+                zs = [data[g[0]][g[1]][2] for g in grp]
+                if max(zs) - min(zs) > 1e-5:
+                    zz = float(np.mean(zs))
+                    for g in grp:
+                        data[g[0]][g[1]][2] = zz
+                        changed.add(g[0])
+                    fixed += 1
+        for n in changed:
+            me = bpy.data.objects[n].data
+            me.vertices.foreach_set("co", data[n].ravel())
+            me.update()
+        if not fixed:
+            break
+    plan["tidy"] = report
+    T.save_state(st)
+    print(json.dumps({"id": pid, "tidy": report}, indent=1))
 
 
 def finalise(pid, target=None):

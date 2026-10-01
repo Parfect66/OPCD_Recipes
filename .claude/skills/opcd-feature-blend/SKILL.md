@@ -85,6 +85,16 @@ copy in place: change the skill's `scripts\` and re-copy.
   Report the `deck.max_fill_over_barrel_m` from the plan. Tune it with
   `overrides.deck_reach`, or switch it off with `overrides.deck=False`. See
   `references/culvert.md` §1 "Deck".
+- **Tidy geometry on every build (user request, 1 Oct 2026).** The blend leaves a messy fan of thin triangles and
+  creases beside the wings. `C.tidy(pid)` (kit 2026.10.01-3) joins triangles into quads, relaxes the vertices
+  sideways, smooths heights (cart paths keep theirs) and syncs seam vertices to dz 0. The job runs it after blend
+  (`tidy=False` in an entry turns it off); live builds run it after `C.blend`, before `C.verify`.
+- **House style: `style="slim"` for every new culvert (user decision, 1 Oct 2026).** The user prefers the look of
+  the Meloneras C35 arch: a plain headwall with short wings and a thin wall (`wing_len` 1.5, `wing_angle` 20,
+  `wall` 0.25, `apron_thk` 0.1). Always pass `style="slim"` to `plan_culvert` / the job entry and only change the
+  insert: the opening kind and size (`arch`, `box` or `pipe`, any span and rise). Don't offer other wing/headwall
+  shapes unless asked. The user adds textures in Unity, so no materials by default. Headwalls follow the bank, so on
+  a high bank they are tall; that is expected.
 - **Known courses** and their paths, features and open to-dos are in
   `references/courses.md`. Read it when the user names a course.
 
