@@ -82,3 +82,10 @@ See `blender-mcp.md` for tool behaviour and API gotchas.
 - **Backups.** `C.backup` writes `<file>_pre-C<nn>_01.blend` next to the open `.blend`. They pile up.
 - **Built-in sizes used.** Buggy tunnel: `kind="tunnel", span=3.0, rise=2.6`. "1.5 rectangular" =
   `kind="box", span=1.5` (rise 1.125 by default); confirm with the user.
+
+## Lessons from the C20 tunnel (1 Oct 2026)
+
+- **Cursor on a path stub:** the auto "along the path" axis can run the wrong way for the user's intent. Drop `C.markers()` arrows (cursor mouth plus a guess across the large path) and let the user place both mouths, then plan with `inlet="CULVERT_IN", outlet="CULVERT_OUT"`.
+- **Level floor:** passage floors follow the crest (`barrel_rise` up to +1.6 m), which can poke through low ground. `C.edit_plan(pid, in_barrel_rise=0.0, out_barrel_rise=0.0)` makes it level.
+- **`C.verify` prints and returns None**; `C.plan_culvert` returns a JSON string. Capture stdout to parse.
+- **Smoothing after a build:** average Z by XY across all touched surface meshes, pin verts within 0.6 m of the culvert, never lower over the barrel, then sync coincident cross-mesh seam verts (incl. untouched neighbours) to one Z. Check seam dz = 0 and roof cover afterwards.
