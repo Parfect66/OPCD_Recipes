@@ -76,6 +76,14 @@ from culverts as follows:
 
 `style="slim"` (a `plan_culvert` argument, or a job-entry override) applies the user's preferred headwall: `wing_len` 1.5, `wing_angle` 20, `wall` 0.25, `apron_thk` 0.1. Explicit overrides still win. It is the house style for all new culverts; only `kind`, `span` and `rise` change. A wing length near zero fails verify (flush error up to 0.84 m); 1.5 m passes.
 
+### Curved tunnels (kit 2026.10.01-4)
+
+`plan_curved(kind, span, rise, inlet, in_bearing, outlet, out_bearing, straight=14, **overrides)` plans a passage (`tunnel` or `underpass`, so the barrels are open) whose centreline leaves each portal straight for `straight` m along its own direction and joins in a smooth Hermite curve under the ground. `in_bearing` is the direction of travel into the tunnel at the entrance, `out_bearing` the direction of travel out of it at the exit. `plan_culvert` sets the passage barrel depth to half the chord, so `plan_curved` resets `barrel_depth` to `straight`. Each portal's frame uses its own `outward` vector (the blend already works per end); headwall height and wing ends are recomputed from the ground behind each portal; the floor is one straight grade (`curve.grade`) from entrance to exit; the deck step is off. `build_curved` builds the portals plus `CULVERT_<id>_MID`, the opening swept along the curve (rings 1 m apart, meeting the barrel ends within 5 cm). `fill_over` lifts every nearby surface to roof + 0.6 m with a 3 m flat and 6 m fade to the sides (skips 2 m at each portal) and backs up any extra meshes it touches. `curved_cover` reports the minimum ground over the roof. `tidy` follows the curved centreline (`plan["centreline"]`).
+
+### Opening size and shape (kit 2026.10.01-6)
+
+`corner` (m) sets the top-corner chamfer of `underpass` and `box` openings (default 10 % of the smaller side, at most 0.3 m): `corner=0.9` with `kind="underpass"`, span 5.5, rise 3.4 gives a wide, squarish two-car opening. Arches (`kind="arch"`/`"tunnel"`) stay semicircular on top.
+
 ### Tidy (kit 2026.10.01-3)
 
 `C.tidy(pid)` runs after `blend` and before `verify` (the job does this by default; `tidy=False` skips it). For each touched surface mesh within `radius` 10 m of the mouths or 8 m of the barrel it joins triangles into quads, relaxes free vertices sideways (8 passes) while re-projecting their heights onto the pre-relax surface, then smooths heights (8 passes, factor 0.45, at most 0.5 m, never lowering over the barrel). Concrete (cart path) meshes only get quads and sideways relaxation, so their heights stay. Mesh borders and anything within 0.4 m of the structure are pinned, so seams and wall contact hold. Finally coincident vertices of neighbouring meshes are made equal (seam dz 0). Edge-length spread barely changes because the dense-to-coarse gradient stays; the visible gain is the quads and the softened creases.
@@ -218,6 +226,7 @@ flow=None, asset=None, cursor_is="crossing", **overrides)`. `cursor_is` is `cros
 | `overrides` | dict of the parameters above, e.g. `{"band": 1.5}` |
 | `edits` | applied after planning with `edit_plan`, e.g. `{"out_top_rel": 0.8}` |
 | `target` | mesh to join into (default: nearest Concrete) |
+| `bake` | default `True`: for culverts that are **not** joined, give the units a Concrete material and `Col` colours and bake their transforms to identity (`C.bake`), so Unity places them correctly |
 | `include_water` | also reshape Lake/Creek meshes (default `False`) |
 
 `edit_plan(pid, ...)` works before `blend`. Use `in_invert`, `out_invert`, `in_top_rel`,

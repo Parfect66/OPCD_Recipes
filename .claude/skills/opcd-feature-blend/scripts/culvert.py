@@ -8,6 +8,8 @@ Workflow (each step is one blender-mcp ``execute_blender_code`` call):
     blend(id)           densify, carve, and reshape the surface meshes     (destructive)
     verify(id)          seam / hole / buried-barrel / Unity checks
     finalise(id)        UV + colours + material, join into the Concrete mesh (destructive)
+    bake(id)            for units that stay SEPARATE: Concrete material + colours, transforms baked
+                        into the mesh (identity object transform) so Unity places them correctly
     restore(id)         put every touched mesh back and delete the culvert
     discard_backups(id) once the user has approved the result
 
@@ -26,7 +28,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.10.01-3"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.10.02-1"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
 # Passages carry a path or road THROUGH the embankment: open barrel end to end,
@@ -42,6 +44,9 @@ DEFAULTS = dict(
     max_top=1.5,        # max headwall height above the opening soffit
     wing_angle=30.0,    # flare of wing walls from the culvert axis (deg)
     wing_len=None,      # m; default max(1.0, 1.25 * headwall height)
+    side=None,          # m of wall each side of the opening; default max(0.3, 0.25 * span)
+    ring=None,          # (width, proud) m: raised arch ring round the opening, e.g. (0.45, 0.25)
+    corner=None,        # m: top-corner chamfer of box / underpass openings (default 10 % of the smaller side, max 0.3)
     apron_thk=0.15,
     barrel_depth=T.YARD,  # visible barrel behind the mouth, then capped
     min_fall=0.01,      # 1 in 100
@@ -70,6 +75,8 @@ DEFAULTS = dict(
 # and a thin wall; only the opening (arch / box / pipe, any size) changes between culverts.
 STYLES = {
     "slim": dict(wing_len=1.5, wing_angle=20.0, wall=0.25, apron_thk=0.1),
+    # motorway tunnel portal: a wide plain wall with a raised arch ring round the opening
+    "portal": dict(wing_len=3.0, wing_angle=20.0, wall=0.5, apron_thk=0.2, side=3.5, ring=(0.45, 0.25)),
 }
 
 # Per-kind defaults on top of DEFAULTS (overrides still win).
@@ -85,10 +92,10 @@ KIND_DEFAULTS = {
 
 # ------------------------------------------------------------------ opening shapes
 
-def opening_profile(kind, span, rise, segs):
+def opening_profile(kind, span, rise, segs, corner=None):
     """Closed polygon (x, z) of the opening, invert at z=0, centred on x=0."""
     if kind == "underpass":
-        h = min(0.30, 0.1 * min(span, rise))
+        h = corner if corner is not None else min(0.30, 0.1 * min(span, rise))
         s = span / 2
         return [(-s, 0.0), (s, 0.0), (s, rise - h), (s - h, rise), (-s + h, rise), (-s, rise - h)]
     kind = SHAPE.get(kind, kind)
@@ -97,7 +104,7 @@ def opening_profile(kind, span, rise, segs):
         return [(r * math.sin(t), r - r * math.cos(t))
                 for t in np.linspace(0, 2 * math.pi, segs, endpoint=False)]
     if kind == "box":
-        h = min(0.15, 0.2 * min(span, rise))
+        h = corner if corner is not None else min(0.15, 0.2 * min(span, rise))
         s = span / 2
         return [(-s, 0.0), (s, 0.0), (s, rise - h), (s - h, rise), (-s + h, rise), (-s, rise - h)]
     if kind == "arch":
@@ -133,7 +140,7 @@ def _ray_poly(c, ang, poly):
 def mouth_dims(kind, span, rise, top_rel, p):
     wall = p["wall"]
     phi = math.radians(p["wing_angle"])
-    side = max(0.3, 0.25 * span)
+    side = p.get("side") or max(0.3, 0.25 * span)
     a = span / 2 + side                      # half-width of apron at the headwall
     half_w = a + wall / math.cos(phi)        # headwall half-width
     wing_len = p["wing_len"] or max(1.0, 1.25 * top_rel)
@@ -181,7 +188,7 @@ def build_mouth_bmesh(kind, span, rise, top_rel, wing_end_rel, p, barrel_rise=0.
     d = mouth_dims(kind, span, rise, top_rel, p)
     hw, phi, L, a, ae, v_end = d["half_w"], d["phi"], d["wing_len"], d["a"], d["ae"], d["v_end"]
 
-    prof = opening_profile(kind, span, rise, segs)
+    prof = opening_profile(kind, span, rise, segs, p.get("corner"))
     c = np.array([0.0, rise / 2])
     rect = [(-hw, -foot), (hw, -foot), (hw, top_rel), (-hw, top_rel)]
     angs = sorted({round(math.atan2(z - c[1], x - c[0]) % (2 * math.pi), 9) for x, z in prof + rect})
@@ -199,11 +206,27 @@ def build_mouth_bmesh(kind, span, rise, top_rel, wing_end_rel, p, barrel_rise=0.
     F_out = [V(x, 0, z) for x, z in outer]
     B_in = [V(x, -wall, z) for x, z in inner]
     B_out = [V(x, -wall, z) for x, z in outer]
+    ring_w, ring_p = (p.get("ring") or (0.0, 0.0))
 
     def ring(A, B):
         return [bm.faces.new((A[i], A[(i + 1) % n], B[(i + 1) % n], B[i])) for i in range(n)]
 
-    groups.append((ring(F_out, F_in), lambda f: Vector((0, 1, 0))))
+    F_ring = None
+    if ring_w > 0 and ring_p > 0:
+        # raised arch ring: outer edge ring_w beyond the opening (nothing under the floor line),
+        # standing ring_p proud of the wall; the bore starts at its front face
+        ring_out = []
+        for (x, z), t in zip(inner, angs):
+            k = ring_w if z > 0.02 else 0.0
+            ring_out.append((x + k * math.cos(t), z + k * math.sin(t)))
+        R0 = [V(x, 0, z) for x, z in ring_out]
+        RP = [V(x, ring_p, z) for x, z in ring_out]
+        F_ring = [V(x, ring_p, z) for x, z in inner]
+        groups.append((ring(F_out, R0), lambda f: Vector((0, 1, 0))))
+        groups.append((ring(R0, RP), lambda f: Vector((f.calc_center_median().x, 0, f.calc_center_median().z - c[1]))))
+        groups.append((ring(RP, F_ring), lambda f: Vector((0, 1, 0))))
+    else:
+        groups.append((ring(F_out, F_in), lambda f: Vector((0, 1, 0))))
     groups.append((ring(B_out, B_in), lambda f: Vector((0, -1, 0))))
     rc = Vector((0, 0, (top_rel - foot) / 2))
     groups.append((ring(F_out, B_out),
@@ -223,7 +246,7 @@ def build_mouth_bmesh(kind, span, rise, top_rel, wing_end_rel, p, barrel_rise=0.
                 radial[y] = 1.0 + (p["corr_depth"] / r if k % 2 else 0.0)
             k += 1
     ys = sorted(set(ys), reverse=True)
-    rings = []
+    rings = [F_ring] if F_ring is not None else []
     for y in ys:
         if y == 0.0:
             rings.append(F_in)
@@ -1202,14 +1225,24 @@ def tidy(pid, radius=10.0, axis_reach=8.0, iterations=8, quads=True, z_passes=8,
     ckd.balance()
     a = np.array(plan["ends"]["in"]["mouth"], float)
     b = np.array(plan["ends"]["out"]["mouth"], float)
-    ab = b - a
-    L2 = max(float(ab @ ab), 1e-9)
+    # centreline: straight mouth-to-mouth, or the plan's curved tunnel path
+    poly = np.array(plan.get("centreline") or [a.tolist(), b.tolist()], float)
+    segv = poly[1:] - poly[:-1]
+    seglen = np.linalg.norm(segv, axis=1)
+    cum = np.concatenate([[0.0], np.cumsum(seglen)])
+    total = max(float(cum[-1]), 1e-9)
     half = plan["span"] / 2 + plan["params"]["wall"] + 0.5
 
     def seg(x, y):
-        p = np.array([x, y]) - a
-        t = min(max(float(p @ ab) / L2, 0.0), 1.0)
-        return float(np.linalg.norm(p - t * ab)), t
+        p = np.array([x, y])
+        best, bt = 1e18, 0.0
+        for i in range(len(segv)):
+            l2 = max(float(segv[i] @ segv[i]), 1e-12)
+            t = min(max(float((p - poly[i]) @ segv[i]) / l2, 0.0), 1.0)
+            d = float(np.linalg.norm(p - (poly[i] + t * segv[i])))
+            if d < best:
+                best, bt = d, (cum[i] + t * seglen[i]) / total
+        return best, bt
 
     def weight(x, y):
         d1 = ckd.find((x, y, 0.0))[2]
@@ -1290,8 +1323,8 @@ def tidy(pid, radius=10.0, axis_reach=8.0, iterations=8, quads=True, z_passes=8,
         T._bm_write(bm, ob)
     # coincident vertices of neighbouring surface meshes must agree exactly (no gaps at seams)
     surf = T.surface_meshes(exclude=T.WATER_KEYWORDS)
-    mid = (a + b) / 2
-    reach = float(np.sqrt(L2)) / 2 + radius + 2.0
+    mid = (poly.min(0) + poly.max(0)) / 2
+    reach = float(np.linalg.norm(poly.max(0) - poly.min(0))) / 2 + radius + 2.0
     for _ in range(3):
         data, pts = {}, []
         for ob in surf:
@@ -1327,6 +1360,226 @@ def tidy(pid, radius=10.0, axis_reach=8.0, iterations=8, quads=True, z_passes=8,
     plan["tidy"] = report
     T.save_state(st)
     print(json.dumps({"id": pid, "tidy": report}, indent=1))
+
+
+# ------------------------------------------------------------- curved tunnels
+
+def _hermite(J1, t0, J2, t1, n=400):
+    c = float(np.linalg.norm(J2 - J1))
+    m0, m1 = np.asarray(t0, float) * c, np.asarray(t1, float) * c
+    u = np.linspace(0.0, 1.0, n)[:, None]
+    h00, h10 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u
+    h01, h11 = -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
+    return h00 * J1 + h10 * m0 + h01 * J2 + h11 * m1
+
+
+def curved_path(P0, t0, P3, t1, straight, step=1.0):
+    """Centreline of a curved tunnel: a straight run of ``straight`` m from each portal along its own
+    direction, joined by a smooth Hermite curve (tangent-continuous). Returns (points (N,2), s (N,),
+    unit tangents (N,2) in the direction of travel, entrance to exit)."""
+    P0, P3 = np.asarray(P0, float), np.asarray(P3, float)
+    t0, t1 = np.asarray(t0, float), np.asarray(t1, float)
+    J1, J2 = P0 + t0 * straight, P3 - t1 * straight
+    full = np.vstack([P0[None], _hermite(J1, t0, J2, t1), P3[None]])
+    d = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(full, axis=0), axis=1))])
+    s = np.concatenate([np.arange(0.0, d[-1], step), [d[-1]]])
+    pts = np.c_[np.interp(s, d, full[:, 0]), np.interp(s, d, full[:, 1])]
+    tg = np.gradient(pts, s, axis=0)
+    tg /= np.linalg.norm(tg, axis=1)[:, None]
+    tg[0], tg[-1] = t0, t1
+    return pts, s, tg
+
+
+def plan_curved(kind, span, rise, inlet, in_bearing, outlet, out_bearing, straight=14.0, name=None, **overrides):
+    """Plan a tunnel that curves under the ground. ``in_bearing`` is the direction of travel at the
+    entrance (into the tunnel), ``out_bearing`` the direction of travel at the exit (out of it).
+    Each portal gets its own straight barrel of ``straight`` m along its direction; ``build_curved``
+    joins them with a swept curve. Use a passage kind ("tunnel" or "underpass") so the barrels are open."""
+    if kind not in PASSAGE_KINDS:
+        raise ValueError("curved tunnels need an open barrel: kind must be 'tunnel' or 'underpass'")
+    overrides.setdefault("deck", False)
+    overrides["barrel_depth"] = float(straight)
+    plan_culvert(kind=kind, span=span, rise=rise, inlet=inlet, outlet=outlet, flow="as_bearing",
+                 name=name, **overrides)
+    st = T.load_state()
+    pid = sorted(st)[-1]
+    plan = st[pid]
+    p = plan["params"]
+    p["barrel_depth"] = float(straight)   # plan_culvert sets half the chord for passages
+    sampler = T.HeightSampler(T.surface_meshes(exclude=T.WATER_KEYWORDS))
+    t0 = np.array(_axis_from_bearing(in_bearing))
+    t1 = np.array(_axis_from_bearing(out_bearing))
+    pts, s, tg = curved_path(plan["ends"]["in"]["mouth"], t0, plan["ends"]["out"]["mouth"], t1, straight)
+    total = float(s[-1])
+    z_in, z_out = plan["ends"]["in"]["invert"], plan["ends"]["out"]["invert"]
+    g = (z_out - z_in) / total
+    rise = plan["rise"]
+    for role, outward in (("in", -t0), ("out", t1)):
+        e = plan["ends"][role]
+        e["outward"] = [float(outward[0]), float(outward[1])]
+        e["barrel_rise"] = g * straight if role == "in" else -g * straight
+        m = np.array(e["mouth"])
+        gb = sampler.height(*(m - np.array(e["outward"]) * 1.0))
+        top = (gb - e["invert"] + p["upstand"]) if gb is not None else rise + p["cover_min"]
+        e["top_rel"] = float(min(max(top, rise + p["cover_min"]), rise + p["max_top"]))
+        d = mouth_dims(plan["kind"], plan["span"], rise, e["top_rel"], p)
+        xax = np.array([e["outward"][1], -e["outward"][0]])
+        wend = []
+        for sgn in (-1, 1):
+            q = m + xax * sgn * (d["half_w"] + d["wing_len"] * math.sin(d["phi"])) \
+                + np.array(e["outward"]) * d["wing_len"] * math.cos(d["phi"])
+            gw = sampler.height(q[0], q[1])
+            rel = (gw - e["invert"] + p["upstand"]) if gw is not None else 0.3
+            wend.append(float(min(max(rel, 0.3), e["top_rel"])))
+        e["wing_end_rel"] = wend
+        e["note"] = "curved tunnel portal"
+    plan["fall"] = z_in - z_out
+    plan["centreline"] = pts.tolist()
+    plan["curve"] = {"straight": float(straight), "grade": float(g), "length": total,
+                     "in_bearing": float(in_bearing), "out_bearing": float(out_bearing)}
+    plan["length"] = total
+    plan["warnings"] = [w for w in plan.get("warnings", []) if "dips" not in w]
+    T.save_state(st)
+    summary(pid)
+    return pid
+
+
+def build_curved(pid):
+    """build() the two portals, then sweep the opening along the curve between their barrels
+    (separate object CULVERT_<id>_MID)."""
+    build(pid)
+    return build_mid(pid)
+
+
+def build_mid(pid):
+    """(Re)create only the swept middle section CULVERT_<id>_MID of a curved tunnel."""
+    st = T.load_state()
+    plan = st[pid]
+    cv = plan["curve"]
+    pts = np.array(plan["centreline"], float)
+    n_pts = len(pts)
+    s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
+    tg = np.gradient(pts, s, axis=0)
+    tg /= np.linalg.norm(tg, axis=1)[:, None]
+    tg[0] = _axis_from_bearing(cv["in_bearing"])
+    tg[-1] = _axis_from_bearing(cv["out_bearing"])
+    D, g = cv["straight"], cv["grade"]
+    z_in = plan["ends"]["in"]["invert"]
+    p = plan["params"]
+    segs = p["segments"] or int(max(16, min(48, round(math.pi * plan["span"] / 0.08))))
+    prof = opening_profile(plan["kind"], plan["span"], plan["rise"], segs, p.get("corner"))
+    n = len(prof)
+    bm = bmesh.new()
+    rings = []
+    # rings at every grid step between the two barrels, plus exactly at each barrel end so the sweep
+    # meets the portal barrels with no gap
+    s_sel = [D] + [float(v) for v in s if D + 1e-6 < v < s[-1] - D - 1e-6] + [float(s[-1] - D)]
+    for sv in s_sel:
+        q = np.array([np.interp(sv, s, pts[:, 0]), np.interp(sv, s, pts[:, 1])])
+        t = np.array([np.interp(sv, s, tg[:, 0]), np.interp(sv, s, tg[:, 1])])
+        t /= np.linalg.norm(t)
+        X = np.array([-t[1], t[0]])
+        zf = z_in + g * sv
+        rings.append([bm.verts.new((float(q[0] + X[0] * x), float(q[1] + X[1] * x), float(zf + z)))
+                      for x, z in prof])
+    faces = []
+    for r0, r1 in zip(rings, rings[1:]):
+        ctr = Vector((sum(v.co.x for v in r0) / n, sum(v.co.y for v in r0) / n, sum(v.co.z for v in r0) / n))
+        for i in range(n):
+            faces.append((bm.faces.new((r0[i], r0[(i + 1) % n], r1[(i + 1) % n], r1[i])), ctr))
+    bm.normal_update()
+    for f, ctr in faces:
+        if f.normal.dot(ctr - f.calc_center_median()) < 0:
+            f.normal_flip()
+    bm.normal_update()
+    name = f"CULVERT_{pid}_MID"
+    old = bpy.data.objects.get(name)
+    if old:
+        bpy.data.objects.remove(old, do_unlink=True)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    T.feature_collection().objects.link(ob)
+    plan["objects"]["mid"] = name
+    T.save_state(st)
+    return name
+
+
+def fill_over(pid, cover=0.6, lateral=3.0, fade=6.0, portal_clear=2.0):
+    """Fill-only: lift every surface mesh near the curved tunnel to ``cover`` m above its roof, with a
+    smooth falloff to the sides. Skips ``portal_clear`` m at each portal (the kit blends those)."""
+    from mathutils.kdtree import KDTree
+    st = T.load_state()
+    plan = st[pid]
+    cv = plan["curve"]
+    pts = np.array(plan["centreline"], float)
+    s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
+    total = float(s[-1])
+    zf = plan["ends"]["in"]["invert"] + cv["grade"] * s
+    req = zf + plan["rise"] + cover
+    kd = KDTree(len(pts))
+    for i, q in enumerate(pts):
+        kd.insert((q[0], q[1], 0.0), i)
+    kd.balance()
+    reach = lateral + fade
+    lo, hi = pts.min(0) - reach, pts.max(0) + reach
+    objs = []
+    for ob in T.surface_meshes(exclude=T.WATER_KEYWORDS):
+        bb = T.world_bbox_xy(ob)
+        if bb is None or not (bb[0] <= hi[0] and bb[2] >= lo[0] and bb[1] <= hi[1] and bb[3] >= lo[1]):
+            continue
+        objs.append(ob)
+    mapping = plan["backup"]["meshes"]
+    extra = [ob for ob in objs if ob.name not in mapping]
+    if extra:
+        mapping.update(T.backup_meshes(extra, pid + "fill"))
+        T.save_state(st)
+    report = {}
+    for ob in objs:
+        me = ob.data
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3)
+        moved = 0.0
+        for i, v in enumerate(co):
+            if not (lo[0] <= v[0] <= hi[0] and lo[1] <= v[1] <= hi[1]):
+                continue
+            _, idx, d = kd.find((v[0], v[1], 0.0))
+            w = _smooth01(d, lateral, lateral + fade)
+            if w <= 0.0:
+                continue
+            sv = s[idx]
+            w *= min(1.0, max(0.0, (sv - portal_clear) / 3.0), max(0.0, (total - sv - portal_clear) / 3.0))
+            need = req[idx] - v[2]
+            if w > 0.0 and need > 0.0:
+                co[i, 2] += w * need
+                moved = max(moved, w * need)
+        if moved > 0.0:
+            me.vertices.foreach_set("co", co.ravel())
+            me.update()
+            report[ob.name] = round(moved, 3)
+    plan["fill_over"] = report
+    T.save_state(st)
+    print(json.dumps({"id": pid, "fill_over_max_m": report}))
+
+
+def curved_cover(pid):
+    """Metres of ground above the roof along the curved tunnel (min and where)."""
+    plan = T.load_state()[pid]
+    cv = plan["curve"]
+    pts = np.array(plan["centreline"], float)
+    s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
+    sampler = T.HeightSampler(T.surface_meshes(exclude=T.WATER_KEYWORDS))
+    best = (99.0, 0.0)
+    for k in range(0, len(pts), 2):
+        h = sampler.height(pts[k][0], pts[k][1])
+        if h is None:
+            continue
+        roof = plan["ends"]["in"]["invert"] + cv["grade"] * s[k] + plan["rise"]
+        if h - roof < best[0]:
+            best = (h - roof, float(s[k]))
+    return {"min_cover_m": round(best[0], 2), "at_s_m": round(best[1], 1)}
 
 
 def finalise(pid, target=None):
@@ -1377,3 +1630,41 @@ def discard_backups(pid):
     plan["backup"] = {"file": plan.get("backup", {}).get("file"), "meshes_discarded": True}
     T.save_state(st)
     T.emit({"id": pid, "backup_meshes_removed": n, "backup_file_kept": plan["backup"]["file"]})
+
+
+def bake(pid, attributes=True):
+    """Make separate (unjoined) mouth units Unity-ready. Call last, after tidy() and verify().
+
+    ``build`` keeps each unit's local frame in the object (a rotation, with the translation
+    read back as 0). Blender draws that correctly, but the Unity import reads the raw mesh, so the
+    units land in the wrong place. This applies the world matrix to the mesh data and resets the
+    object transform to identity, as every OPCD surface mesh has.
+
+    attributes=True first gives units with no material / colour attribute the nearest Concrete
+    mesh's material and ``Col`` colours (``T.match_attributes``), without joining. Units that already
+    carry a material (e.g. from ``apply_stone``) keep it. Don't call this before finalise(): joining
+    uses the object frames. Safe to call twice.
+    """
+    st = T.load_state()
+    plan = st[pid]
+    concrete = list(T.surface_meshes(("Concrete",)))
+    baked = []
+    for role, name in plan["objects"].items():
+        ob = bpy.data.objects.get(name)
+        if ob is None:
+            continue
+        if attributes and concrete and not (ob.data.materials and ob.data.color_attributes):
+            x, y = plan["ends"][role]["mouth"]
+            def _d(c):
+                mw, vs = c.matrix_world, c.data.vertices
+                return min(((mw @ vs[i].co).x - x) ** 2 + ((mw @ vs[i].co).y - y) ** 2
+                           for i in range(0, len(vs), 7))
+            T.match_attributes(ob, min(concrete, key=_d), (x, y))
+        ob.data.transform(ob.matrix_world)
+        ob.matrix_world = Matrix.Identity(4)
+        ob.data.update()
+        baked.append(name)
+    plan["baked"] = True
+    T.save_state(st)
+    T.undo_push(f"Bake culvert {pid}")
+    T.emit({"id": pid, "baked": baked, "identity_transform": True, "attributes": attributes})
