@@ -91,3 +91,32 @@ See `blender-mcp.md` for tool behaviour and API gotchas.
 - **`C.verify` prints and returns None**; `C.plan_culvert` returns a JSON string. Capture stdout to parse.
 - **Smoothing after a build:** average Z by XY across all touched surface meshes, pin verts within 0.6 m of the culvert, never lower over the barrel, then sync coincident cross-mesh seam verts (incl. untouched neighbours) to one Z. Check seam dz = 0 and roof cover afterwards.
 - **House style:** pass `style="slim"` to every `C.plan_culvert` call (see SKILL.md). Only `kind`, `span` and `rise` vary.
+- **Curved tunnel (C38):** the user lays both arrows flat, pointing into the tunnel at each end (check by reading `matrix_world @ (0,0,1)`); plan with `C.plan_curved`, never `C.plan_culvert`. `plan_culvert` prints a straight in-to-out summary that is wrong for a curve, and passage plans set `barrel_depth` to half the chord (52 m barrels on a 105 m tunnel) until `plan_curved` resets it. After a rebuild of only the sweep use `C.build_mid(pid)` (calling `C.build` again resets the status).
+- **Underpass under a split motorway (C43):** see the C43 notes in courses.md. Order matters: join and bridge the road first, then `plan_culvert`, then override inverts and headwall heights, then build/backup/blend/tidy. Check the road for dents after the blend and repair them (fill-only to its plane, sync coincident neighbour vertices).
+- **Motorway portal (C44):** viewport colour is `Object`, so new surface meshes need `ob.color` copied from a sibling and smooth shading, or they look grey. Trim cart-path faces behind a mouth before `blend`, or the barrel plateau lifts them 5 m. See the C44 notes in courses.md.
+- **Never re-read the 3D cursor mid-build.** Read it once, write the coordinates into the code, and re-read only when the user places a new one. (C45 was built at a cursor the user had just moved.) Take an invert from the surface under the apron, not from a path's end vertex.
+- **Which road is it?** The user may answer a clarifying question only with a number or a hint; then read the selection and the arrows, and if both are untouched infer from heights and island geometry (the road is the higher feature, 5 m or more above the underpass floor), say plainly what you inferred, and build it.
+- **Align an underpass with the paths it joins:** measure both paths' centre lines near the gap and build on the line through them; take the opening width from the wider path. After a blend near a road, repair any dents in the road deck (fill to its plane) and sync coincident neighbours.
+
+## Unity import of separate (unjoined) units (2 Oct 2026)
+
+- The bare mouth units from `C.build` have **no material and no `Col` vertex-colour attribute**
+  (Concrete meshes have material `Concrete` and `Col`, CORNER/BYTE_COLOR). The user imported every
+  `CULVERT_*` into Unity and they showed in the hierarchy but not in the view (only sky-coloured holes where
+  the terrain was carved). Likely cause: no material / zero vertex colour. Fix tried: run
+  `T.match_attributes(ob, nearest_concrete, (x, y))` on every unit (adds `Col`, material `Concrete`,
+  PaintExclude if present), without joining. Do this at the end of every live build, after `tidy`.
+- Needs confirmation from the user's Unity re-import; if they still don't show, check the FBX export
+  settings and normals (the units' face normals are not all outward: 100 of 166 faces point away from the
+  centroid, which is normal for an open arch).
+- `bpy_prop_collection` doesn't support extended slices (`vertices[::7]`): use `range(0, len(v), 7)`.
+- The kit modules must be imported in every `execute_blender_code` call (`sys.path` insert) or you get
+  `No module named 'opcd_terrain'`.
+- **Bake the unit transforms (kit 2026.10.02-1: `C.bake(pid)`).** `C.build` keeps each unit's local frame
+  in the object (a Z rotation, translation 0). Blender draws that right, but Unity reads the raw mesh and
+  puts the units in the wrong place (only the unjoined `CULVERT_C03`, with an identity transform, was
+  right). Call **`C.bake(pid)` last** (after `tidy` and `verify`) on every build that stays separate: it
+  gives the units the nearest Concrete mesh's material and `Col`, applies the world matrix to the mesh and
+  resets the object to identity. Safe to call twice; never call it before `finalise`. The job script does it
+  automatically for unjoined culverts (`bake: False` in the entry to skip). Confirmed by the user in Unity
+  (2 Oct 2026). Live builds in the open file: `C.bake(pid)` replaces the manual `match_attributes` loop above.

@@ -91,6 +91,9 @@ def run(job_path, mode, out_dir):
                 C.apply_stone(pid)
             if spec.get("join", True) and (mode == "final" or spec.get("finalise_in_test", True)):
                 C.finalise(pid, target=spec.get("target"))
+            joined = spec.get("join", True) and (mode == "final" or spec.get("finalise_in_test", True))
+            if not joined and spec.get("bake", True):
+                C.bake(pid)   # separate units: identity transform, Concrete material and colours, for Unity
             plan = T.load_state()[pid]
             entry.update(id=pid, ok=ok, status=plan["status"], axis_bearing=round(plan["bearing"], 1),
                          axis_source=plan["axis_note"], length_m=round(plan["length"], 3),

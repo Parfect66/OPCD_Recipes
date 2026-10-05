@@ -1,6 +1,6 @@
 ---
 name: opcd-feature-blend
-description: Add built features such as culverts (concrete pipe, corrugated steel, stone/brick arch, box) and passages (motorway/road underpass, road tunnel portal) to an OPCD V4 GSPro course .blend in Blender 4.5. It carves, reshapes and joins the surrounding OPCD surface meshes (Fairway, Rough, Concrete, Custom1-4 ...) so the feature sits flush and sealed in the terrain. Each course gets a re-runnable job script, run in a background Blender with test renders, and the result is saved to a new .blend. Use this whenever the user wants to put a culvert, drain, headwall or pipe under a cart path or bank, an underpass under a motorway or road, or a tunnel through a hill, or add any structure to a run-off, ditch or burn on a course. Also use it to blend an object into OPCD meshes or edit terrain around a placed asset, even if they don't say "culvert" or name the skill.
+description: Add built features such as culverts (concrete pipe, corrugated steel, stone/brick arch, box) and passages (motorway/road underpass, road tunnel portal) to an OPCD V4 GSPro course .blend in Blender 4.5. It carves, reshapes and joins the surrounding OPCD surface meshes (Fairway, Rough, Concrete, Custom1-4 ...) so the feature sits flush and sealed in the terrain. Each course gets a re-runnable job script, run in a background Blender with test renders, and the result is saved to a new .blend. Use this whenever the user wants to put a culvert, drain, headwall or pipe under a cart path or bank, an underpass under a motorway or road, or a tunnel through a hill, or add any structure to a run-off, ditch or burn on a course. Also use it to blend an object into OPCD meshes or edit terrain around a placed asset, or to re-mesh and smooth a pinched, creased or bumpy stretch of cart path or road (e.g. "make this circled bit look like the rest of the path"), even if they don't say "culvert" or name the skill.
 ---
 
 # OPCD feature blend (Blender 4.5, background jobs)
@@ -21,7 +21,7 @@ terrain sheets, low banks, and UV/colour-attribute mismatches on join.
 ## Paths
 
 - **Kit:** `C:\Users\steve\Claude_Code\Blender Scripts\opcd_feature_kit\`, containing
-  `opcd_terrain.py`, `culvert.py`, `culvert_job.py` and `selftest.py`.
+  `opcd_terrain.py`, `culvert.py`, `culvert_job.py`, `opcd_road.py`, `path_remesh.py` and `selftest.py`.
 - **Job scripts:** `C:\Users\steve\Claude_Code\Blender Scripts\<Course>\<course>_culverts.py`,
   e.g. `Blender Scripts\Meloneras\meloneras_culverts.py`. Start from
   `<SKILL_DIR>\scripts\templates\course_culverts_template.py`.
@@ -89,6 +89,29 @@ copy in place: change the skill's `scripts\` and re-copy.
   creases beside the wings. `C.tidy(pid)` (kit 2026.10.01-3) joins triangles into quads, relaxes the vertices
   sideways, smooths heights (cart paths keep theirs) and syncs seam vertices to dz 0. The job runs it after blend
   (`tidy=False` in an entry turns it off); live builds run it after `C.blend`, before `C.verify`.
+- **Road gaps (kit module `opcd_road.py`).** For an underpass beneath a road whose pieces stop short (void gap): `Frame`, `fit_plane`, `lift_ends`, `bridge_gap`, `embankment`; see the C48 notes in `references/courses.md` and the module docstring. Find road pieces as connected islands even inside one mesh object, and ask what is the road if it is not obvious.
+- **Pinched or bumpy path sections (`path_remesh.py`, 1 Oct 2026).** When the user circles a stretch of cart path
+  or road whose triangles have collapsed into a fan of slivers (typically left by `bridge_gap` or a blend) and asks
+  for it to look like the regular strip either side, don't hand-edit it. Run `scripts\path_remesh.py` in the background:
+  1. `scan` (config needs only `"path"`): it lists 10 m cells with sliver triangles, which shows where the zone is.
+  2. Write `<Course>\<course>_path_<place>.json`: the mesh, 5-8 `centreline` points down the middle of the path
+     (from at least 9 m before the zone to 9 m after it), and `s0`/`s1`, the zone in metres along the centreline.
+     The ends must sit in regular strip, because the height fit uses the 7 m either side.
+  3. `test`: it re-meshes with even triangles (edge verts ~0.55 m, interior rows at 1/3 and 2/3, ~1.1 m apart),
+     fits a smooth cubic height profile per edge pinned at the zone ends, moves neighbour seam vertices onto the new
+     edge and fades the height change into them over 1.5 m. Check `seam_gap_max_m` 0, `flipped_faces` 0,
+     `non_manifold_edges` 0, and a top-down wireframe plus a low-angle render, before and after.
+  4. `final` to a **new** `.blend` (e.g. `_v3` after `_v2`; it refuses to overwrite).
+
+  Usage and config keys are in the script docstring. The path outline is kept: where a creek bank corner bends the
+  edge, the extra edge verts stay (`side_tol`), so small fans remain there. Straightening that bend means reshaping
+  the creek mesh; offer it, don't do it unasked. The Meloneras run is recorded in `references/courses.md`.
+- **Motorway portal style (kit 2026.10.01-5).** When the user wants a portal like a road tunnel (wide wall, big arch, raised arch ring), use `kind="tunnel"` with `style="portal"` (params `side`, `ring`); keep `slim` for ordinary culverts. Where a road crosses over, bridge and flatten the road, build embankment meshes up to its edge, and put the portals where the slope reaches the wall top; see the C44 notes in `references/courses.md`.
+- **Curved tunnels (kit 2026.10.01-4).** For a long tunnel that bends under the ground, ask the user to lay two arrows
+  flat (`CULVERT_IN` at the cursor, `CULVERT_OUT`), each pointing the way you would travel INTO the tunnel at that
+  end; the exit's travel direction is its arrow bearing + 180. Then `C.plan_curved("tunnel", span, rise, P0, in_bearing,
+  P3, out_bearing, straight=14, style="slim", band=1.5, footing=1.0)`, `C.build_curved`, `C.backup`, `C.blend`,
+  `C.fill_over` (lifts ground that is below roof + 0.6 m), `C.tidy`, `C.verify`, `C.curved_cover`. See `references/culvert.md`.
 - **House style: `style="slim"` for every new culvert (user decision, 1 Oct 2026).** The user prefers the look of
   the Meloneras C35 arch: a plain headwall with short wings and a thin wall (`wing_len` 1.5, `wing_angle` 20,
   `wall` 0.25, `apron_thk` 0.1). Always pass `style="slim"` to `plan_culvert` / the job entry and only change the
@@ -209,6 +232,14 @@ their PC:
 - **Overwriting any `.blend`, or deleting anything**, without asking.
 - **Asking whether to join a feature into Concrete.** The user doesn't want to be asked. Live builds
   stay separate objects; join only on explicit request (see `references/live-mcp.md`, lessons).
+- **Saving `.blend` files under the session scratchpad.** Its path is longer than Blender's limit, so
+  `libraries.write` / `save_as_mainfile` fail with "Cannot open file ... for writing". Use a short folder such as
+  `%TEMP%\<job>`. To iterate quickly on a 1 GB course file, write only the meshes in the zone to a small `.blend`
+  with `bpy.data.libraries.write(path, objs, fake_user=True)` and test on that; run the final on the full file.
+- **Naming a scratch script `inspect.py`.** It shadows Python's `inspect` module, so numpy fails to import in the
+  same folder.
+- **Separate (unjoined) units without `C.bake(pid)`.** Unity places them wrongly (object transform) and may not
+  render them (no material/colours). Always bake as the last step of a live build; the job does it itself.
 - **Live-mode sessions:** read the "Lessons" section of `references/live-mcp.md` first (stale marker
   arrows, undo wiping plan state, mouths on paths, passage cuttings cutting hillside paths).
 
@@ -232,6 +263,7 @@ culvert types, plus the outlet-cursor mode. Run it to check the kit:
 - `references/culvert.md`: types (incl. passages), sizes, anatomy, how the plan is derived,
   every parameter, the library asset convention, and tuning.
 - `references/courses.md`: per-course record (paths, features built, to-dos).
+- `scripts/path_remesh.py`: re-mesh and smooth a pinched stretch of path or road (see Conventions).
 - `references/live-mcp.md`: applying a culvert inside the open Blender through
   blender-mcp. Only on request.
 - `references/blender-mcp.md`: blender-mcp behaviour, Blender 4.5 API notes, and
