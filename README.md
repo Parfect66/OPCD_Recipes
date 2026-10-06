@@ -21,8 +21,8 @@ OPCD_Recipes/
 │   └── RECIPE_SCHEMA.md        # Full operator reference
 ├── addon_patches/              # Addon patches (e.g., PaintExclude)
 │   └── paint_exclude.py        # Vertex-group exclusion for paint ops
-├── .claude/skills/
-│   └── opcd-feature-blend/     # Claude skill: add culverts etc. via blender-mcp and blend into OPCD meshes
+├── docs/retired/
+│   └── opcd-feature-blend/     # RETIRED copy of the culvert skill; replaced by the personal skill opcd-features-blend
 ├── blender_scripts/            # Standalone Blender 4.5 scripts (Run Script)
 │   └── culvert_blend.py        # Pipe culvert + headwalls + terrain blend at the 3D cursor
 ├── validation/                 # Recipe validation tools
@@ -158,7 +158,7 @@ See `addon_patches/paint_exclude.py` for code and validation test plan.
 ## Blender Scripts
 
 ### Culvert builder (culvert_blend.py)
-**Fallback only.** Prefer the `opcd-feature-blend` skill below. Use this script when Claude can't reach your Blender, e.g. from a cloud session: it's a paste-into-Blender version, with no verify step and no join into the Concrete mesh.
+**Fallback only.** Prefer the `opcd-features-blend` skill (see the retired-skill note below). Use this script when Claude can't reach your Blender, e.g. from a cloud session: it's a paste-into-Blender version, with no verify step and no join into the Concrete mesh.
 
 Builds a precast concrete pipe culvert under a cart path and blends the OPCD terrain around it. The default is a 600 mm bore with raked-end headwalls and aprons at both ends.
 
@@ -233,9 +233,13 @@ Paint operators (`fillvertexpaint`, `randomvertexpaintloop`, `growcolor`, etc.) 
 
 See `docs/TROUBLESHOOTING.md` for more.
 
-## Claude Skill: opcd-feature-blend
+## Claude Skill: opcd-feature-blend (RETIRED 7 Oct 2026)
 
-`.claude/skills/opcd-feature-blend/` is a Claude skill that adds built features to an OPCD V4 course `.blend`: culverts (pipe, corrugated, arch, box) and passages (motorway underpass, road tunnel). It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
+> **Retired.** This skill moved to `docs/retired/opcd-feature-blend/` and no longer loads. Use the personal skill
+> `opcd-features-blend` (`~/.claude/skills/opcd-features-blend`), which adds stub culverts, road levelling and the
+> base-plane fix. The description below is kept for history.
+
+`docs/retired/opcd-feature-blend/` is the old Claude skill that adds built features to an OPCD V4 course `.blend`: culverts (pipe, corrugated, arch, box) and passages (motorway underpass, road tunnel). It carves and reshapes the surrounding surface meshes, then joins the feature into the nearest `Concrete` mesh. It works like `procedural-building-blender`:
 
 - **Job script:** each course gets a re-runnable script, e.g. `Blender Scripts\<Course>\<course>_culverts.py`, built from `scripts/templates/`.
 - **Background runs:** the job runs in a background Blender 4.5 via `scripts/culvert_job.py`, never in the open file. `test` mode renders review PNGs; `final` mode saves a new `.blend` and refuses to overwrite.
