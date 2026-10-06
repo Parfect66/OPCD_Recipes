@@ -28,7 +28,7 @@ from mathutils import Matrix, Vector
 
 import opcd_terrain as T
 
-KIT_VERSION = "2026.10.02-1"   # bump on every change; the skill compares it with the installed kit
+KIT_VERSION = "2026.10.06-1"   # bump on every change; the skill compares it with the installed kit
 
 KINDS = ("pipe", "corrugated", "arch", "box", "underpass", "tunnel")
 # Passages carry a path or road THROUGH the embankment: open barrel end to end,
@@ -1192,6 +1192,52 @@ def _smooth01(d, d0, d1):
     return t * t * (3 - 2 * t)
 
 
+def _sync_seams(centre, reach, tol=0.003):
+    """Give coincident vertices (XY within ``tol``) of different surface meshes one Z.
+
+    Works on every non-water surface mesh within ``reach`` m of ``centre``, including untouched
+    neighbours, so no seam is left open. Identity object transforms are assumed (as for all
+    OPCD meshes). Returns the number of vertex groups that were changed.
+    """
+    from mathutils.kdtree import KDTree
+    surf = T.surface_meshes(exclude=T.WATER_KEYWORDS)
+    total = 0
+    for _ in range(3):
+        data, pts = {}, []
+        for ob in surf:
+            me = ob.data
+            co = np.empty(len(me.vertices) * 3)
+            me.vertices.foreach_get("co", co)
+            co = co.reshape(-1, 3)
+            data[ob.name] = co
+            idx = np.nonzero(np.hypot(co[:, 0] - centre[0], co[:, 1] - centre[1]) < reach)[0]
+            pts += [(ob.name, int(i)) for i in idx]
+        kd = KDTree(max(len(pts), 1))
+        for k, (n, i) in enumerate(pts):
+            kd.insert((data[n][i][0], data[n][i][1], 0.0), k)
+        kd.balance()
+        changed, fixed = set(), 0
+        for k, (n, i) in enumerate(pts):
+            p = data[n][i]
+            grp = [pts[j] for _, j, _ in kd.find_range((p[0], p[1], 0.0), tol)]
+            if len({g[0] for g in grp}) > 1:
+                zs = [data[g[0]][g[1]][2] for g in grp]
+                if max(zs) - min(zs) > 1e-5:
+                    zz = float(np.mean(zs))
+                    for g in grp:
+                        data[g[0]][g[1]][2] = zz
+                        changed.add(g[0])
+                    fixed += 1
+        for n in changed:
+            me = bpy.data.objects[n].data
+            me.vertices.foreach_set("co", data[n].ravel())
+            me.update()
+        total += fixed
+        if not fixed:
+            break
+    return total
+
+
 def tidy(pid, radius=10.0, axis_reach=8.0, iterations=8, quads=True, z_passes=8, z_clamp=0.5, z_factor=0.45):
     """Clean the topology the blend leaves round a built culvert. Call after blend(), before verify().
 
@@ -1322,44 +1368,336 @@ def tidy(pid, radius=10.0, axis_reach=8.0, iterations=8, quads=True, z_passes=8,
                         "quads_after": quads1, "verts_relaxed": len(free)}
         T._bm_write(bm, ob)
     # coincident vertices of neighbouring surface meshes must agree exactly (no gaps at seams)
-    surf = T.surface_meshes(exclude=T.WATER_KEYWORDS)
     mid = (poly.min(0) + poly.max(0)) / 2
-    reach = float(np.linalg.norm(poly.max(0) - poly.min(0))) / 2 + radius + 2.0
-    for _ in range(3):
-        data, pts = {}, []
-        for ob in surf:
-            me = ob.data
-            co = np.empty(len(me.vertices) * 3)
-            me.vertices.foreach_get("co", co)
-            co = co.reshape(-1, 3)
-            data[ob.name] = co
-            idx = np.nonzero(np.hypot(co[:, 0] - mid[0], co[:, 1] - mid[1]) < reach)[0]
-            pts += [(ob.name, int(i)) for i in idx]
-        kd = KDTree(max(len(pts), 1))
-        for k, (n, i) in enumerate(pts):
-            kd.insert((data[n][i][0], data[n][i][1], 0.0), k)
-        kd.balance()
-        changed, fixed = set(), 0
-        for k, (n, i) in enumerate(pts):
-            p = data[n][i]
-            grp = [pts[j] for _, j, _ in kd.find_range((p[0], p[1], 0.0), 0.003)]
-            if len({g[0] for g in grp}) > 1:
-                zs = [data[g[0]][g[1]][2] for g in grp]
-                if max(zs) - min(zs) > 1e-5:
-                    zz = float(np.mean(zs))
-                    for g in grp:
-                        data[g[0]][g[1]][2] = zz
-                        changed.add(g[0])
-                    fixed += 1
-        for n in changed:
-            me = bpy.data.objects[n].data
-            me.vertices.foreach_set("co", data[n].ravel())
-            me.update()
-        if not fixed:
-            break
+    _sync_seams(mid, float(np.linalg.norm(poly.max(0) - poly.min(0))) / 2 + radius + 2.0)
     plan["tidy"] = report
     T.save_state(st)
     print(json.dumps({"id": pid, "tidy": report}, indent=1))
+
+
+# ------------------------------------------------------------- level the path over a culvert
+#
+# Paths conformed to the Unity heightmap stay wavy over a culvert even after the deck step
+# (which only fills), and the ground beside them can sit below their edges. level_path() puts
+# the path over the culvert on one smooth grade fitted to the path either side, then makes the
+# ground follow it: coincident seam vertices exactly, the ground beside the path with a falloff,
+# and any ground below a path edge raised to meet it. Walls keep their seal (0.4 m pinned).
+
+def _world_co(ob):
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    mw = np.array(ob.matrix_world)
+    if not np.allclose(mw, np.eye(4)):
+        co = (np.c_[co, np.ones(len(co))] @ mw.T)[:, :3]
+    return co
+
+
+def _set_world_co(ob, co):
+    mw = np.array(ob.matrix_world)
+    if not np.allclose(mw, np.eye(4)):
+        co = (np.c_[co, np.ones(len(co))] @ np.linalg.inv(mw).T)[:, :3]
+    ob.data.vertices.foreach_set("co", np.ascontiguousarray(co).ravel())
+    ob.data.update()
+
+
+def _path_island(ob, seed_xy, window_mask):
+    """Vertex indices of the island of ``ob`` (edges walked inside ``window_mask``) nearest ``seed_xy``."""
+    me = ob.data
+    co = _world_co(ob)
+    inside = np.nonzero(window_mask)[0]
+    if not len(inside):
+        return np.zeros(0, int)
+    seed = int(inside[np.argmin(np.hypot(*(co[inside, :2] - seed_xy).T))])
+    ev = np.empty(len(me.edges) * 2, int)
+    me.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(-1, 2)
+    ev = ev[window_mask[ev[:, 0]] & window_mask[ev[:, 1]]]
+    adj = {}
+    for i, j in ev:
+        adj.setdefault(int(i), []).append(int(j))
+        adj.setdefault(int(j), []).append(int(i))
+    seen, stack = {seed}, [seed]
+    while stack:
+        v = stack.pop()
+        for w in adj.get(v, ()):
+            if w not in seen:
+                seen.add(w)
+                stack.append(w)
+    return np.array(sorted(seen), int)
+
+
+def _boundary_verts(ob, idx):
+    """Of the vertex indices ``idx``, those on an edge used by exactly one face of the island."""
+    me = ob.data
+    keep = np.zeros(len(me.vertices), bool)
+    keep[idx] = True
+    count = {}
+    for poly in me.polygons:
+        vs = poly.vertices
+        if not all(keep[v] for v in vs):
+            continue
+        for k in range(len(vs)):
+            e = (min(vs[k], vs[k - 1]), max(vs[k], vs[k - 1]))
+            count[e] = count.get(e, 0) + 1
+    b = {v for e, c in count.items() if c == 1 for v in e}
+    return np.array(sorted(b), int)
+
+
+def level_path(pid, path=None, zone=None, anchor=8.0, fade=4.0, profile="curve", cut=True,
+               follow=4.0, skirt=1.0, min_cover=0.3, wall_pin=0.4, pin_fade=1.5):
+    """Level the cart path over a built culvert and conform the ground to it.
+
+    Call after blend() and tidy(), before verify(). Steps:
+      1. find the Concrete path island that crosses the barrel (``path`` = object name to force one);
+      2. fit z = a + b s + c s^2 + d u (``profile="curve"``; "plane" drops the s^2 term) to the path
+         vertices ``anchor`` m either side of the levelled stretch (``zone`` m each side of the barrel
+         line, measured along the path), and put the path in the zone on that grade, fading back to
+         its own heights over ``fade`` m (``cut=False`` only raises);
+      3. if the grade leaves less than ``min_cover`` over the barrel crown at the crossing, lift
+         it with a smooth hump and say so;
+      4. ground beside the path follows the change within ``follow`` m, ground lower than a path
+         edge within ``skirt`` m is raised to just under it, ground under the path is kept just
+         below it, and nothing within ``wall_pin`` m of the culvert footprint moves, fading in over
+         ``pin_fade`` m (walls stay sealed and flush);
+      5. coincident seam vertices of all surface meshes get one Z.
+    Every mesh it changes is added to the plan's mesh backups first, so restore() undoes it.
+    """
+    from mathutils.bvhtree import BVHTree
+    from mathutils.kdtree import KDTree
+    import opcd_road as R
+    if profile not in ("curve", "plane"):
+        raise ValueError('profile must be "curve" or "plane"')
+    st = T.load_state()
+    plan = st[pid]
+    if plan["status"] != "blended":
+        raise RuntimeError(f"Status is {plan['status']}; level_path() runs after blend()/tidy(), before finalise().")
+    p = plan["params"]
+    a = np.array(plan["ends"]["in"]["mouth"], float)
+    b = np.array(plan["ends"]["out"]["mouth"], float)
+    L = float(np.linalg.norm(b - a))
+    ax = (b - a) / L
+    nx = np.array([ax[1], -ax[0]])
+
+    # 1. the path island crossing the barrel line
+    cands = [bpy.data.objects[path]] if path else T.surface_meshes(("Concrete",))
+    best = None
+    for ob in cands:
+        co = _world_co(ob)
+        rel = co[:, :2] - a
+        t, u = rel @ ax, rel @ nx
+        hit = (t > -1.0) & (t < L + 1.0) & (np.abs(u) < 3.0)
+        if hit.sum() and (best is None or hit.sum() > best[0]):
+            best = (int(hit.sum()), ob, float(np.median(t[hit])))
+    if best is None:
+        raise RuntimeError(f"No Concrete path crosses culvert {pid}; pass path='<object name>'.")
+    ob = best[1]
+    O = a + np.clip(best[2], 0.0, L) * ax
+    co = _world_co(ob)
+    near = np.hypot(*(co[:, :2] - O).T) < 6.0
+    loc = co[near, :2]
+    _, _, vt = np.linalg.svd(loc - loc.mean(0))
+    rd = vt[0]
+    sin_t = abs(float(rd @ nx))   # sin of the path/barrel angle: 1 when the path crosses square
+    if zone is None:
+        # the barrel's footprint along the path grows as the crossing gets more skewed
+        zone = max(6.0, (plan["span"] / 2 + p["wall"] + 3.0) / max(sin_t, 0.3))
+    fr = R.Frame(O, math.degrees(math.atan2(rd[0], rd[1])))
+    reach_s = zone + max(anchor, fade) + 1.0
+    s_all, u_all = fr.su(co[:, :2])
+    window = (np.abs(s_all) <= reach_s) & (np.abs(u_all) <= 25.0)
+    isl = _path_island(ob, O, window)
+    if len(isl) < 6:
+        raise RuntimeError(f"Path {ob.name}: too few vertices near the culvert.")
+    s_i, u_i, z_i = s_all[isl], u_all[isl], co[isl, 2]
+
+    # 2. fit the grade on the anchors
+    side = []
+    for sgn in (-1, 1):
+        m = (sgn * s_i > zone) & (sgn * s_i <= zone + anchor)
+        side.append(m)
+        if m.sum() < 6:
+            raise RuntimeError(f"Path {ob.name} doesn't reach {zone + anchor:.1f} m on one side of the "
+                               "culvert; pass a smaller zone or anchor.")
+    m = side[0] | side[1]
+    cols = [np.ones(m.sum()), s_i[m], u_i[m]] + ([s_i[m] ** 2] if profile == "curve" else [])
+    A = np.c_[tuple(cols)]
+    coef, *_ = np.linalg.lstsq(A, z_i[m], rcond=None)
+    rms = float(np.sqrt(np.mean((A @ coef - z_i[m]) ** 2)))
+
+    def grade(s_, u_):
+        g = coef[0] + coef[1] * s_ + coef[2] * u_
+        return g + (coef[3] * s_ ** 2 if profile == "curve" else 0.0)
+
+    # 3. cover over the barrel crown at the crossing
+    t0 = float((O - a) @ ax) / L
+    inv = plan["ends"]["in"]["invert"] + t0 * (plan["ends"]["out"]["invert"] - plan["ends"]["in"]["invert"])
+    crown = inv + plan["rise"] + p["wall"]
+    lift = max(0.0, crown + min_cover - float(grade(0.0, 0.0)))
+
+    def target(s_, u_):
+        hump = lift * (0.5 + 0.5 * np.cos(np.pi * np.clip(np.abs(s_) / (zone + fade), 0.0, 1.0)))
+        return grade(s_, u_) + hump
+
+    # back up every mesh this step will change (once per plan)
+    win_lo = O - reach_s - follow - 2.0
+    win_hi = O + reach_s + follow + 2.0
+    touch = [ob] + [o for o in T.surface_meshes(exclude=T.WATER_KEYWORDS) if o is not ob and not (
+        T.world_bbox_xy(o)[2] < win_lo[0] or T.world_bbox_xy(o)[0] > win_hi[0]
+        or T.world_bbox_xy(o)[3] < win_lo[1] or T.world_bbox_xy(o)[1] > win_hi[1])]
+    baks = plan.setdefault("backup", {}).setdefault("meshes", {})
+    missing = [o for o in touch if o.name not in baks]
+    if missing:
+        baks.update(T.backup_meshes(missing, pid))
+
+    # apply to the path
+    w = np.where(np.abs(s_i) <= zone, 1.0, T.smoothstep(1.0 - (np.abs(s_i) - zone) / fade))
+    dz = w * (target(s_i, u_i) - z_i)
+    if not cut:
+        dz = np.maximum(dz, 0.0)
+    z_old = co[isl, 2].copy()
+    co[isl, 2] += dz
+    _set_world_co(ob, co)
+    bnd = _boundary_verts(ob, isl)
+    in_isl = np.zeros(len(co), bool)
+    in_isl[isl] = True
+    old_z = {int(i): float(z) for i, z in zip(isl, z_old)}
+    bxy = co[bnd, :2]
+    bdz = np.array([co[i, 2] - old_z[int(i)] for i in bnd])
+    bz = co[bnd, 2]
+    kd = KDTree(len(bnd))
+    for k, q in enumerate(bxy):
+        kd.insert((q[0], q[1], 0.0), k)
+    kd.balance()
+    me = ob.data
+    me.calc_loop_triangles()
+    tri = [tuple(t.vertices) for t in me.loop_triangles if all(in_isl[v] for v in t.vertices)]
+    path_bvh = BVHTree.FromPolygons([tuple(c) for c in co], tri)
+    # culvert footprints: nothing within wall_pin m of an outline moves, so the walls keep their seal
+    outl = [xy_o for _, xy_o, _, _, _ in _outlines_world(plan)]
+
+    def wall_dist(xy):
+        d = np.full(len(xy), np.inf)
+        for poly in outl:
+            dd, _ = T.nearest_on_outline(xy, poly, np.zeros(len(poly)))
+            dd[T.points_in_polygon(xy, poly)] = 0.0
+            d = np.minimum(d, dd)
+        return d
+    zmax = float(co[isl, 2].max()) + 50.0
+
+    # 4. the ground follows the path
+    moved, raised_under_edge = {}, 0
+    for o in touch:
+        oc = co if o is ob else _world_co(o)
+        so, uo = fr.su(oc[:, :2])
+        cand = np.nonzero((np.abs(so) <= reach_s + follow) & (np.abs(uo) <= 30.0))[0]
+        if o is ob:
+            cand = cand[~in_isl[cand]]
+        if "Concrete" in o.name:
+            cand = cand[:0]   # other paths keep their heights; seams are synced below
+        dwall = wall_dist(oc[cand, :2]) if len(cand) else np.zeros(0)
+        n_mv = 0
+        for i, dc in zip(cand, dwall):
+            x, y, z = oc[i]
+            _, k, d = kd.find((x, y, 0.0))
+            if d < 0.003:
+                zn = float(bz[k])            # a seam vertex always takes the path's height
+            else:
+                if d > max(follow, skirt):
+                    hit = path_bvh.ray_cast(Vector((x, y, zmax)), Vector((0, 0, -1)))
+                    if hit[0] is None:
+                        continue
+                if dc < wall_pin:
+                    continue
+                pin = float(T.smoothstep((dc - wall_pin) / pin_fade))
+                nn = kd.find_n((x, y, 0.0), 4)
+                wts = np.array([1.0 / max(dd, 1e-3) for _, _, dd in nn])
+                dzi = float(np.dot(wts, [bdz[j] for _, j, _ in nn]) / wts.sum())
+                zn = z + pin * dzi * float(T.smoothstep(1.0 - d / follow))
+                edge = float(bz[k]) - 0.03
+                if d <= skirt and zn < edge and abs(so[i]) <= zone + fade + follow:
+                    zn += pin * (edge - zn) * float(T.smoothstep(1.0 - d / skirt))
+                    raised_under_edge += 1
+                hit = path_bvh.ray_cast(Vector((x, y, zmax)), Vector((0, 0, -1)))
+                if hit[0] is not None:
+                    under = hit[0].z - 0.05
+                    if zn > under or (d < skirt and zn < under):
+                        zn = z + pin * (under - z)
+            if abs(zn - z) > 1e-6:
+                oc[i, 2] = zn
+                n_mv += 1
+        if n_mv and o is not ob:
+            _set_world_co(o, oc)
+        elif n_mv:
+            _set_world_co(ob, oc)
+        if n_mv:
+            moved[o.name] = n_mv
+
+    # 5. seams
+    seams = _sync_seams(O, reach_s + follow + 5.0)
+
+    # report: edge gaps (path edge above the ground next to it) and grade fit
+    co = _world_co(ob)
+    gap = 0.0
+    others = [o for o in touch if o is not ob and "Concrete" not in o.name]
+    pts = []
+    for o in others:
+        oc = _world_co(o)
+        so, uo = fr.su(oc[:, :2])
+        sel = np.nonzero((np.abs(so) <= zone + fade) & (np.abs(uo) <= 30.0))[0]
+        pts += [tuple(oc[i]) for i in sel]
+    if pts:
+        tkd = KDTree(len(pts))
+        for k, q in enumerate(pts):
+            tkd.insert((q[0], q[1], 0.0), k)
+        tkd.balance()
+        sb, _ = fr.su(co[bnd, :2])
+        for i, sv in zip(bnd, sb):
+            if abs(sv) > zone + fade:
+                continue
+            q, k, d = tkd.find((co[i, 0], co[i, 1], 0.0))
+            if d < 0.5 and wall_dist(co[i:i + 1, :2])[0] >= wall_pin:
+                gap = max(gap, float(co[i, 2] - pts[k][2]))
+    s_n, u_n = fr.su(co[isl, :2])
+    inz = np.abs(s_n) <= zone
+    dev = float(np.abs(co[isl, 2][inz] - target(s_n[inz], u_n[inz])).max()) if inz.any() else 0.0
+    tops, suggest = {}, {}
+    pdist = wall_dist(co[isl, :2])
+    for role, xy_o, _tz, _fr, _d in _outlines_world(plan):
+        e = plan["ends"][role]
+        mouth = np.array(e["mouth"], float)
+        jb = int(np.argmin(np.hypot(*(co[bnd, :2] - mouth).T)))
+        tops[role] = round(float(co[bnd[jb], 2]) - (e["invert"] + e["top_rel"]), 3)
+        # path right up against this end: its headwall must reach the levelled path
+        dd, _ = T.nearest_on_outline(co[isl, :2], xy_o, np.zeros(len(xy_o)))
+        close = (dd <= wall_pin + pin_fade) & (pdist <= wall_pin + pin_fade)
+        if close.any():
+            need = float(co[isl, 2][close].max()) - e["invert"] + p["upstand"]
+            if need > e["top_rel"] + 0.05:
+                suggest[f"{role}_top_rel"] = round(need, 3)
+    report = {"path": ob.name, "crossing_xy": [round(float(v), 3) for v in O],
+              "path_bearing_deg": round(_bearing(rd), 1), "crossing_angle_deg": round(math.degrees(math.asin(min(1.0, sin_t))), 1),
+              "zone_m_each_side": round(float(zone), 2), "profile": profile, "fit_rms_m": round(rms, 3),
+              "grade_pct": round(100 * float(coef[1]), 2), "path_verts_levelled": int((np.abs(dz) > 1e-4).sum()),
+              "path_max_raise_m": round(float(dz.max()), 3), "path_max_cut_m": round(float(-dz.min()), 3),
+              "lifted_for_cover_m": round(lift, 3), "cover_over_crown_m": round(float(target(0.0, 0.0)) - crown, 3),
+              "zone_deviation_from_grade_m": round(dev, 4), "ground_verts_moved": moved,
+              "ground_raised_under_edges": raised_under_edge, "seam_groups_synced": seams,
+              "max_edge_gap_m": round(gap, 3),
+              "path_edge_above_headwall_top_m": tops}
+    if suggest:
+        report["suggested_edits"] = suggest
+        report["warning"] = ("the levelled path runs up to a headwall and now stands above its top: "
+                             "restore(), edit_plan(**suggested_edits), then build, backup, blend, tidy "
+                             "and level_path again (the job runner does this pass itself)")
+    elif max(tops.values()) > 0.5:
+        report["note"] = "path edge over 0.5 m above a headwall top; the bank between them slopes down to it"
+    plan["level_path"] = report
+    T.save_state(st)
+    T.undo_push(f"Level path over culvert {pid}")
+    T.emit({"id": pid, "level_path": report})
+    return report
 
 
 # ------------------------------------------------------------- curved tunnels

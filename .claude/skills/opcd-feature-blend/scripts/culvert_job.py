@@ -84,6 +84,20 @@ def run(job_path, mode, out_dir):
             C.blend(pid, include_water=spec.get("include_water", False))
             if spec.get("tidy", True):
                 C.tidy(pid)   # even out the topology and heights round the structure (kit -3)
+            if spec.get("level_path"):
+                lp_args = spec["level_path"] if isinstance(spec["level_path"], dict) else {}
+                lp = C.level_path(pid, **lp_args)
+                if lp.get("suggested_edits"):
+                    # the levelled path runs up to a headwall: raise it and redo the culvert once
+                    entry["level_path_first_pass"] = lp
+                    C.restore(pid)
+                    C.edit_plan(pid, **lp["suggested_edits"])
+                    C.build(pid)
+                    C.backup(pid, target=spec.get("target"), file_copy=False)
+                    C.blend(pid, include_water=spec.get("include_water", False))
+                    if spec.get("tidy", True):
+                        C.tidy(pid)
+                    C.level_path(pid, **lp_args)
             ok = C.verify(pid)
             entry["renders"] = T.render_views(out_dir, name, C.preview_views(pid),
                                               engine=job.get("RENDER_ENGINE", "CYCLES"))
@@ -99,7 +113,7 @@ def run(job_path, mode, out_dir):
                          axis_source=plan["axis_note"], length_m=round(plan["length"], 3),
                          fall_m=round(plan["fall"], 3), warnings=plan["warnings"],
                          ends=plan["ends"], verify=plan.get("verify"), meshes=plan.get("blend_report"),
-                         joined_into=plan.get("target"))
+                         joined_into=plan.get("target"), level_path=plan.get("level_path"))
             all_ok &= ok
         except Exception as exc:  # keep going so one bad culvert doesn't hide the others
             entry.update(ok=False, error=f"{type(exc).__name__}: {exc}", trace=traceback.format_exc())

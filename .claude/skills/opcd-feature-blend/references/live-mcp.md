@@ -32,7 +32,9 @@ across calls and sessions.
    screenshot of each. The user approves.
 4. **Backup, blend, tidy, verify.** `C.backup(pid)` writes an incremental `.blend` copy and
    orphan mesh copies. Then `C.blend(pid)`, `C.tidy(pid)` (cleans the topology and smooths heights round the
-   structure, always run it) and `C.verify(pid)`. Act on the checks (see
+   structure, always run it), `C.level_path(pid)` when the path over the culvert should be level or has gaps
+   under its edges (apply any `suggested_edits` with restore → edit_plan → build → backup → blend → tidy →
+   level_path), and `C.verify(pid)`. Act on the checks (see
    the table in SKILL.md). If `blend` fails partway through, run `C.restore(pid)` and
    `C.backup(pid)` before retrying.
 5. **Finalise.** Only after approval. `C.finalise(pid)` joins the culvert into the

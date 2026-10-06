@@ -156,6 +156,52 @@ def deck_test(out_dir, do_render=False):
     print("DECK OK", round(before[(0.0, 0.0)], 3), "->", round(z_mid, 3))
 
 
+def wavy_notched(x, y):
+    """notched() with a 0.12 m wave along the cart path, as a path conformed to a rough heightmap."""
+    z = notched(x, y)
+    if abs(y) <= 1.5 + 1e-6:
+        z += 0.12 * math.sin(x * 1.3)
+    return z
+
+
+def level_path_test(out_dir, do_render=False):
+    """level_path: wavy, notched path over a culvert whose headwalls abut it, with the ground beside
+    the path dropped 0.3 m (gaps under its edges). The first pass must ask for taller headwalls; the
+    second must leave the path on one grade, no edge gaps, closed seams and a passing verify."""
+    build_scene(wavy_notched)
+    r = bpy.data.objects["Rough_T"].data
+    for v in r.vertices:
+        if 1.6 < abs(v.co.y) < 2.4 and abs(v.co.x) < 5.0:
+            v.co.z -= 0.3
+    r.update()
+    orig = {n: [v.co.z for v in bpy.data.objects[n].data.vertices] for n in ("Concrete_T", "Rough_T")}
+    pid = C.plan_culvert(kind="pipe", span=T.mm(600), centre=(0.3, 0.2), bearing=0, deck=False)
+    C.build(pid)
+    C.backup(pid, file_copy=False)
+    C.blend(pid)
+    C.tidy(pid)
+    lp = C.level_path(pid)
+    assert lp.get("suggested_edits"), "headwalls abut the path: taller headwalls should be suggested"
+    C.restore(pid)
+    after = {n: [v.co.z for v in bpy.data.objects[n].data.vertices] for n in orig}
+    assert after == orig, "restore() did not undo level_path's ground and path edits"
+    C.edit_plan(pid, **lp["suggested_edits"])
+    C.build(pid)
+    C.backup(pid, file_copy=False)
+    C.blend(pid)
+    C.tidy(pid)
+    lp = C.level_path(pid)
+    assert not lp.get("suggested_edits"), lp
+    assert lp["zone_deviation_from_grade_m"] < 1e-3, lp
+    assert lp["max_edge_gap_m"] < 0.03, lp
+    n_common, gap = seam_gap()
+    assert gap < 1e-4, f"level_path opened the Rough/Concrete seam by {gap} m"
+    assert C.verify(pid), T.load_state()[pid]["verify"]
+    if do_render:
+        T.render_views(out_dir, "07_level_path", C.preview_views(pid), samples=16)
+    print("LEVEL PATH OK", lp["path_max_raise_m"], lp["path_max_cut_m"], lp["max_edge_gap_m"])
+
+
 def deck_near_path_test(out_dir, do_render=False):
     """Meloneras pipe case: inlet 0.7 m from the path edge, false notch in the path over
     the barrel. The path must be bridged right up to the headwall and never lowered."""
@@ -343,6 +389,7 @@ def main(out_dir, do_render=True):
     deck_test(out_dir, do_render)
     deck_near_path_test(out_dir, do_render)
     passage_test(out_dir, do_render)
+    level_path_test(out_dir, do_render)
     print("SELFTEST OK")
 
 
