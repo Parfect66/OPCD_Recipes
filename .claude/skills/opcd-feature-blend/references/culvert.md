@@ -88,6 +88,47 @@ from culverts as follows:
 
 `C.tidy(pid)` runs after `blend` and before `verify` (the job does this by default; `tidy=False` skips it). For each touched surface mesh within `radius` 10 m of the mouths or 8 m of the barrel it joins triangles into quads, relaxes free vertices sideways (8 passes) while re-projecting their heights onto the pre-relax surface, then smooths heights (8 passes, factor 0.45, at most 0.5 m, never lowering over the barrel). Concrete (cart path) meshes only get quads and sideways relaxation, so their heights stay. Mesh borders and anything within 0.4 m of the structure are pinned, so seams and wall contact hold. Finally coincident vertices of neighbouring meshes are made equal (seam dz 0). Edge-length spread barely changes because the dense-to-coarse gradient stays; the visible gain is the quads and the softened creases.
 
+### Level path over a culvert (kit 2026.10.06-1)
+
+`C.level_path(pid)` runs after `blend` and `tidy`, before `verify`. Use it when the cart path over a
+culvert is wavy or dipped, or the ground beside it has gaps under the path edges. The deck step only
+fills, so it can leave a wavy path. In order, `level_path`:
+
+1. **Finds the path.** It takes the Concrete island (walked by edges, so one piece of a big path mesh)
+   that crosses the barrel line. Pass `path="<object>"` to force one.
+2. **Fits a grade.** It fits `z = a + b s + c s² + d u` to the path vertices `anchor` (8 m) beyond the
+   levelled stretch on both sides, where `s` runs along the path and `u` across it.
+   `profile="plane"` drops the `s²` term.
+3. **Levels the path.** Inside `zone` m each side of the barrel line, the path goes onto that grade,
+   cutting and filling. It fades back to the path's own heights over `fade` (4 m). `cut=False`
+   only raises. The default `zone` is 6 m, more on a skewed crossing.
+4. **Checks the cover.** If the grade leaves under `min_cover` (0.3 m) over the barrel crown at the
+   crossing, it adds a smooth hump (`lifted_for_cover_m`).
+5. **Conforms the ground.** Seam vertices take the path's new height exactly. Ground within `follow`
+   (4 m) follows the change. Ground lower than a path edge within `skirt` (1 m) is raised to 3 cm
+   under it, and ground under the path is kept 5 cm below it. Nothing within `wall_pin` (0.4 m) of
+   a culvert footprint moves, fading in over `pin_fade` (1.5 m), so walls stay sealed and flush.
+   Other Concrete paths keep their heights.
+6. **Syncs seams** across all surface meshes.
+
+Every mesh it changes is added to the plan's mesh backups first, so `restore` undoes it.
+
+If the path runs right up to a headwall and ends up above its top, the report carries
+`suggested_edits` (`in_top_rel` / `out_top_rel` = path height + upstand). To apply them, run
+`restore`, `edit_plan(**suggested_edits)`, `build`, `backup`, `blend`, `tidy`, then `level_path`
+again. The job runner does this pass by itself.
+
+The report gives:
+- `zone_deviation_from_grade_m` (should be 0);
+- `max_edge_gap_m`: the path edge above the ground beside it (should be under 0.03);
+- `path_max_raise_m` and `path_max_cut_m`;
+- `fit_rms_m`: how even the path either side was;
+- `path_edge_above_headwall_top_m`.
+
+Self-test case `level_path_test`: a wavy notched path, ground 0.3 m low beside it, and headwalls
+abutting the path. The first pass asks for +0.43 m headwalls. After the second pass the path is on
+grade, the edge gap is 0, seams have dz 0, and verify passes.
+
 ### Deck: bridging false dips over the barrel (all kinds)
 
 OPCD meshes are conformed to the terrain imported from Unity, and the heightmap often
@@ -228,6 +269,7 @@ flow=None, asset=None, cursor_is="crossing", **overrides)`. `cursor_is` is `cros
 | `target` | mesh to join into (default: nearest Concrete) |
 | `bake` | default `True`: for culverts that are **not** joined, give the units a Concrete material and `Col` colours and bake their transforms to identity (`C.bake`), so Unity places them correctly |
 | `include_water` | also reshape Lake/Creek meshes (default `False`) |
+| `level_path` | `True` or a dict of `level_path` arguments: level the cart path over the culvert after `tidy` (see "Level path" in §1). If the path runs up to a headwall, the job raises that headwall and redoes the culvert once by itself |
 
 `edit_plan(pid, ...)` works before `blend`. Use `in_invert`, `out_invert`, `in_top_rel`,
 `out_top_rel`, `in_wing_end_rel=[l, r]`, or any override key. Then call `build` again.

@@ -118,6 +118,16 @@ copy in place: change the skill's `scripts\` and re-copy.
   insert: the opening kind and size (`arch`, `box` or `pipe`, any span and rise). Don't offer other wing/headwall
   shapes unless asked. The user adds textures in Unity, so no materials by default. Headwalls follow the bank, so on
   a high bank they are tall; that is expected.
+- **Level the path over a culvert (kit 2026.10.06-1).** When the user asks to level a cart path or road
+  over a culvert, or to close gaps under a path edge or around a culvert, use `C.level_path(pid)` after `tidy`
+  and before `verify`, or `level_path=True` in the job entry. It puts the path on one smooth grade fitted
+  to the path either side (cut and fill), lifts it only if cover over the barrel would drop below 0.3 m,
+  makes the ground follow, raises ground that sits below a path edge, keeps the walls sealed and syncs
+  seams. If the report has `suggested_edits` (the path runs up to a headwall that is now too low), apply
+  them through `restore` → `edit_plan` → `build` → `backup` → `blend` → `tidy` → `level_path`; the job does
+  this itself. Check `max_edge_gap_m` < 0.03 and `zone_deviation_from_grade_m` 0. Details in
+  `references/culvert.md` "Level path". For a culvert that is already **finalised** (joined), restore it or
+  re-run the job first: `level_path` only works on a blended, unjoined culvert.
 - **Known courses** and their paths, features and open to-dos are in
   `references/courses.md`. Read it when the user names a course.
 
@@ -200,6 +210,8 @@ copy in place: change the skill's `scripts\` and re-copy.
 | `concrete_reshaped` not empty | a cart path or road was cut or filled (warning, not a failure) | if the feature doesn't cross that path, use `overrides.band` 1.5 and raise the headwall (`edits.in_top_rel`); expected only for the approach path into a passage |
 | road over the feature still dips after blending | notch wider than the deck reach | raise `overrides.deck_reach` (default 6 m beyond the headwall half-width) |
 | grey ground filling a mouth in the renders | a non-OPCD mesh (usually `Terrain`) is rendering | put it in `HIDE_IN_RENDERS`; see Conventions |
+| path over the culvert wavy, or gaps under its edges | heightmap waves the deck step can't cut | `level_path=True` in the entry (live: `C.level_path(pid)` after `tidy`) |
+| `level_path` `max_edge_gap_m` >= 0.03 | ground beside the path is held by a wall pin or another path | larger `skirt`, or check which mesh sits under the edge |
 
 After the join, **Concrete-wide recipes** (`smoothmesh`, `subdividemesh`, `zshiftmesh`,
 re-meshing) also act on the culvert. Tell the user to run those on the source file first,
@@ -255,7 +267,7 @@ on `culvert.py` and `culvert_job.py`. Extend the kit rather than job scripts, an
 ## Self-test
 
 `selftest.py` builds a synthetic ditch under a cart path and runs everything for all four
-culvert types, plus the outlet-cursor mode. Run it to check the kit:
+culvert types, plus the outlet-cursor mode, the deck, passages and `level_path`. Run it to check the kit:
 `blender -b --factory-startup --python selftest.py -- <out_dir>`.
 
 ## References
