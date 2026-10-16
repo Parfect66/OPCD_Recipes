@@ -129,6 +129,48 @@ Self-test case `level_path_test`: a wavy notched path, ground 0.3 m low beside i
 abutting the path. The first pass asks for +0.43 m headwalls. After the second pass the path is on
 grade, the edge gap is 0, seams have dz 0, and verify passes.
 
+### Tidy path edges (kit 2026.10.16-1)
+
+`C.tidy_path_edges(pid)` runs after `blend`, `tidy` and `level_path`, before `verify`. Carving,
+densifying, the deck and `level_path` can leave a cart path's edge ragged near a culvert:
+
+- a zig-zag outline;
+- a sawtooth of heights along the edge;
+- a ridge or trough in the ground beside it.
+
+`tidy` pins mesh borders, so it never touches the edge. `tidy_path_edges` works on the edge loop of
+the path that crosses the barrel, within `reach` m of the crossing along the path. The default reach
+is `level_path`'s zone + 8 m, fading out over the last 2 m. In order, it:
+
+1. **Smooths the outline.** Each edge vertex moves sideways only, towards a Gaussian average of the
+   edge within `window` (1.5 m) either way along it. The average is measured along the edge, so
+   densified and coarse stretches are treated alike, and bends much wider than the window are kept.
+   Two passes, at most `max_move` (0.35 m) per vertex. Any move that would flip or collapse a face
+   is undone.
+2. **Smooths heights.** The same filter runs on heights along the edge (`z_window` 1.5 m, at most
+   `z_clamp` 0.1 m).
+3. **Moves the seam.** Every coincident vertex of a neighbouring surface mesh gets the same XY and
+   Z, so the seam stays closed.
+4. **Relaxes the ground strip.** Ground within `strip` (1.5 m) of the edge is relaxed in height
+   (`strip_passes` 4, at most 0.15 m). Within 1 m of the edge it never ends up more than 3 cm below
+   it, unless it already was.
+5. **Pins the walls and syncs seams.** Nothing within `wall_pin` (0.4 m) of a culvert footprint
+   moves, fading in over `pin_fade` (1.5 m). Seams are synced last.
+
+Every mesh it changes is backed up into the plan first, so `restore` undoes it.
+
+The report gives:
+- `zigzag_m` [before, after]: the mean sideways offset of edge vertices from their neighbours' line;
+- `edge_z_roughness_m` [before, after];
+- `flipped_faces`, which should be 0;
+- `moves_undone_to_avoid_flips`;
+- `seam_partner_max_gap_m`, which should be 0;
+- `strip_verts_relaxed`.
+
+Self-test case `path_edges_test`: a ±0.2 m zig-zag and ±5 cm sawtooth on the shared Rough/Concrete
+border. The zig-zag goes from 0.186 to 0.003 m, there are no flips, seams have dz 0, verify passes,
+and `restore` is exact. An edge that is already straight is left alone (0.0 → 0.0).
+
 ### Deck: bridging false dips over the barrel (all kinds)
 
 OPCD meshes are conformed to the terrain imported from Unity, and the heightmap often
@@ -269,6 +311,7 @@ flow=None, asset=None, cursor_is="crossing", **overrides)`. `cursor_is` is `cros
 | `target` | mesh to join into (default: nearest Concrete) |
 | `bake` | default `True`: for culverts that are **not** joined, give the units a Concrete material and `Col` colours and bake their transforms to identity (`C.bake`), so Unity places them correctly |
 | `include_water` | also reshape Lake/Creek meshes (default `False`) |
+| `tidy_edges` | `True`, `False` or a dict of `tidy_path_edges` arguments. Default: on whenever `level_path` is on, off otherwise. Smooths the path edges over the culvert (see "Tidy path edges" in §1) |
 | `level_path` | `True` or a dict of `level_path` arguments: level the cart path over the culvert after `tidy` (see "Level path" in §1). If the path runs up to a headwall, the job raises that headwall and redoes the culvert once by itself |
 
 `edit_plan(pid, ...)` works before `blend`. Use `in_invert`, `out_invert`, `in_top_rel`,

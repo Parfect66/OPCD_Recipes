@@ -98,6 +98,10 @@ def run(job_path, mode, out_dir):
                     if spec.get("tidy", True):
                         C.tidy(pid)
                     C.level_path(pid, **lp_args)
+            # path edges: on by default after level_path, or on request (True or a dict of arguments)
+            te = spec.get("tidy_edges", bool(spec.get("level_path")))
+            if te:
+                C.tidy_path_edges(pid, **(te if isinstance(te, dict) else {}))
             ok = C.verify(pid)
             entry["renders"] = T.render_views(out_dir, name, C.preview_views(pid),
                                               engine=job.get("RENDER_ENGINE", "CYCLES"))
@@ -113,7 +117,8 @@ def run(job_path, mode, out_dir):
                          axis_source=plan["axis_note"], length_m=round(plan["length"], 3),
                          fall_m=round(plan["fall"], 3), warnings=plan["warnings"],
                          ends=plan["ends"], verify=plan.get("verify"), meshes=plan.get("blend_report"),
-                         joined_into=plan.get("target"), level_path=plan.get("level_path"))
+                         joined_into=plan.get("target"), level_path=plan.get("level_path"),
+                         tidy_path_edges=plan.get("tidy_path_edges"))
             all_ok &= ok
         except Exception as exc:  # keep going so one bad culvert doesn't hide the others
             entry.update(ok=False, error=f"{type(exc).__name__}: {exc}", trace=traceback.format_exc())

@@ -49,6 +49,12 @@
       "prompt": "Can you level the grey concrete mesh above the culvert and conform the pink terrain so that there are no gaps beneath concrete mesh and culvert",
       "expected_output": "Uses the level_path step (job entry level_path=True, or C.level_path(pid) after tidy in live mode) rather than hand-editing; if suggested_edits come back, raises the headwalls via restore/edit_plan/rebuild; reports max_edge_gap_m < 0.03, zone_deviation_from_grade_m 0, seams dz 0 and a passing verify; shows before/after renders.",
       "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "the edge of the cart path over the culvert has gone all jagged, can you tidy it up so it runs straight like the rest of the path",
+      "expected_output": "Uses C.tidy_path_edges (job: tidy_edges, on by default with level_path) rather than hand-moving vertices; reports zigzag_m and edge_z_roughness_m before/after, flipped_faces 0 and seam_partner_max_gap_m 0; verify still passes; shows a top-down render; suggests path_remesh.py only if moves had to be undone.",
+      "files": []
     }
   ]
 }
