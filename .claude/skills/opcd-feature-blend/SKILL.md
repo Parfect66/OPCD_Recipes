@@ -128,6 +128,14 @@ copy in place: change the skill's `scripts\` and re-copy.
   this itself. Check `max_edge_gap_m` < 0.03 and `zone_deviation_from_grade_m` 0. Details in
   `references/culvert.md` "Level path". For a culvert that is already **finalised** (joined), restore it or
   re-run the job first: `level_path` only works on a blended, unjoined culvert.
+- **Tidy the path edges (kit 2026.10.16-1).** When the user says the path edge over or near a culvert is
+  ragged, jagged, zig-zag or stepped, or asks to tidy or neaten it, use `C.tidy_path_edges(pid)` after
+  `level_path` and before `verify`. In a job it runs by default whenever `level_path` is on; `tidy_edges`
+  turns it on or off. It smooths the edge outline sideways only (a Gaussian over 1.5 m measured along the
+  edge, never flipping a face), smooths heights along the edge, moves the seam vertices of neighbouring
+  meshes with it, relaxes the ground strip beside it and keeps the walls sealed. Check `flipped_faces` 0,
+  `seam_partner_max_gap_m` 0, and that `zigzag_m` and `edge_z_roughness_m` went down. Details in
+  `references/culvert.md` "Tidy path edges".
 - **Known courses** and their paths, features and open to-dos are in
   `references/courses.md`. Read it when the user names a course.
 
@@ -211,6 +219,8 @@ copy in place: change the skill's `scripts\` and re-copy.
 | road over the feature still dips after blending | notch wider than the deck reach | raise `overrides.deck_reach` (default 6 m beyond the headwall half-width) |
 | grey ground filling a mouth in the renders | a non-OPCD mesh (usually `Terrain`) is rendering | put it in `HIDE_IN_RENDERS`; see Conventions |
 | path over the culvert wavy, or gaps under its edges | heightmap waves the deck step can't cut | `level_path=True` in the entry (live: `C.level_path(pid)` after `tidy`) |
+| path edge ragged, zig-zag or stepped near the culvert | carve, densify and level leave the outline uneven | `tidy_edges=True` (on by default with `level_path`); live: `C.tidy_path_edges(pid)` after `level_path` |
+| `tidy_path_edges` `moves_undone_to_avoid_flips` high, edge still ragged | the faces along the edge are too thin to move far | smaller `window`, or re-mesh that stretch with `path_remesh.py` |
 | `level_path` `max_edge_gap_m` >= 0.03 | ground beside the path is held by a wall pin or another path | larger `skirt`, or check which mesh sits under the edge |
 
 After the join, **Concrete-wide recipes** (`smoothmesh`, `subdividemesh`, `zshiftmesh`,
@@ -267,7 +277,7 @@ on `culvert.py` and `culvert_job.py`. Extend the kit rather than job scripts, an
 ## Self-test
 
 `selftest.py` builds a synthetic ditch under a cart path and runs everything for all four
-culvert types, plus the outlet-cursor mode, the deck, passages and `level_path`. Run it to check the kit:
+culvert types, plus the outlet-cursor mode, the deck, passages, `level_path` and `tidy_path_edges`. Run it to check the kit:
 `blender -b --factory-startup --python selftest.py -- <out_dir>`.
 
 ## References

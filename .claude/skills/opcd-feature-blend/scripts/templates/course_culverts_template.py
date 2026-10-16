@@ -26,5 +26,7 @@ CULVERTS = [
         edits={},                    # after planning, e.g. {"out_top_rel": 0.8, "in_invert": 41.20}
         # level_path=True,           # level the cart path over the culvert and close gaps under its edges
         #                            # (or a dict, e.g. {"zone": 8, "cut": False}); see culvert.md "Level path"
+        # tidy_edges=True,           # smooth the path edges (outline, heights, ground strip); on by default
+        #                            # with level_path. A dict passes arguments, e.g. {"window": 2.0}
     ),
 ]

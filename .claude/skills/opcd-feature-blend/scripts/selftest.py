@@ -202,6 +202,42 @@ def level_path_test(out_dir, do_render=False):
     print("LEVEL PATH OK", lp["path_max_raise_m"], lp["path_max_cut_m"], lp["max_edge_gap_m"])
 
 
+def path_edges_test(out_dir, do_render=False):
+    """tidy_path_edges: the shared Rough/Concrete border gets a +-0.2 m zig-zag outline and a +-5 cm
+    height sawtooth. After level_path the edge must come out straight, with no flipped faces, seam
+    partners still coincident and verify passing; restore() must undo it."""
+    build_scene(wavy_notched)
+    for n in ("Rough_T", "Concrete_T"):
+        me = bpy.data.objects[n].data
+        for v in me.vertices:
+            if abs(abs(v.co.y) - 1.5) < 1e-4 and abs(v.co.x) < 14:
+                k = round((v.co.x + 21.0) / 0.75)
+                v.co.y += 0.2 * (1 if k % 2 else -1) * (1 if v.co.y > 0 else -1)
+                v.co.z += 0.05 * (1 if (k // 2) % 2 else -1)
+        me.update()
+    orig = {n: [tuple(v.co) for v in bpy.data.objects[n].data.vertices] for n in ("Concrete_T", "Rough_T")}
+    pid = C.plan_culvert(kind="pipe", span=T.mm(600), centre=(0.3, 0.2), bearing=0, deck=False)
+    C.edit_plan(pid, in_top_rel=1.25, out_top_rel=1.28)
+    C.build(pid)
+    C.backup(pid, file_copy=False)
+    C.blend(pid)
+    C.tidy(pid)
+    C.level_path(pid)
+    rep = C.tidy_path_edges(pid)
+    assert rep["zigzag_m"][1] < 0.3 * rep["zigzag_m"][0], rep
+    assert rep["edge_z_roughness_m"][1] <= rep["edge_z_roughness_m"][0], rep
+    assert rep["flipped_faces"] == 0 and rep["seam_partner_max_gap_m"] < 1e-5, rep
+    n_common, gap = seam_gap()
+    assert gap < 1e-4, f"tidy_path_edges opened the Rough/Concrete seam by {gap} m"
+    assert C.verify(pid), T.load_state()[pid]["verify"]
+    if do_render:
+        T.render_views(out_dir, "08_path_edges", {"Top": ((0.3, 0.0, 22.0), (0.3, 0.01, 0.0), 35)}, samples=16)
+    C.restore(pid)
+    after = {n: [tuple(v.co) for v in bpy.data.objects[n].data.vertices] for n in orig}
+    assert after == orig, "restore() did not undo tidy_path_edges"
+    print("PATH EDGES OK", rep["zigzag_m"], rep["edge_z_roughness_m"])
+
+
 def deck_near_path_test(out_dir, do_render=False):
     """Meloneras pipe case: inlet 0.7 m from the path edge, false notch in the path over
     the barrel. The path must be bridged right up to the headwall and never lowered."""
@@ -390,6 +426,7 @@ def main(out_dir, do_render=True):
     deck_near_path_test(out_dir, do_render)
     passage_test(out_dir, do_render)
     level_path_test(out_dir, do_render)
+    path_edges_test(out_dir, do_render)
     print("SELFTEST OK")
 
 
