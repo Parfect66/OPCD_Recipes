@@ -146,6 +146,9 @@ def apply_runoff_profile(obj, depth=0.5, side_radius=3.0, lake_group="RunoffLake
 
     co[:, 2] = orig_z + offset
     me.vertices.foreach_set("co", co.ravel())
+    # Moved vertices leave custom split normals stale (dark streaks), so drop them
+    if "custom_normal" in me.attributes:
+        me.attributes.remove(me.attributes["custom_normal"])
     me.update()
 
     if was_edit:
