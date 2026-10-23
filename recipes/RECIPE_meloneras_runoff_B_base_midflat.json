@@ -2,11 +2,11 @@
   {
     "runoffprofile": {
       "depth": 0.5,
-      "side_radius": 6.0,
+      "side_radius": 0.75,
       "lake_group": "RunoffLake",
       "lake_drop": 0.2,
       "lake_reach": 8.0,
-      "smooth_passes": 10
+      "smooth_passes": 4
     }
   }
 ]

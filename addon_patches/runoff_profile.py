@@ -126,9 +126,8 @@ def apply_runoff_profile(obj, depth=0.5, side_radius=3.0, lake_group="RunoffLake
             offset += -lake_drop * fade
             lake_applied = len(lake_idx)
 
-    z = orig_z + offset
-
-    # Laplacian smoothing of Z on interior vertices (boundary stays fixed)
+    # Laplacian smoothing of the OFFSET (not absolute Z), boundary offset fixed at 0,
+    # so the terrain around the run-off is not pulled into the channel
     if smooth_passes > 0:
         neighbours = [[] for _ in range(n)]
         for e in me.edges:
@@ -138,14 +137,14 @@ def apply_runoff_profile(obj, depth=0.5, side_radius=3.0, lake_group="RunoffLake
         interior = np.where(~on_boundary)[0]
         nb_idx = [np.array(neighbours[i], dtype=np.int64) for i in interior]
         for _ in range(smooth_passes):
-            new_z = z.copy()
+            new_off = offset.copy()
             for k, i in enumerate(interior):
                 nb = nb_idx[k]
                 if len(nb):
-                    new_z[i] = 0.5 * z[i] + 0.5 * z[nb].mean()
-            z = new_z
+                    new_off[i] = 0.5 * offset[i] + 0.5 * offset[nb].mean()
+            offset = new_off
 
-    co[:, 2] = z
+    co[:, 2] = orig_z + offset
     me.vertices.foreach_set("co", co.ravel())
     me.update()
 
