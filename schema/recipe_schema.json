@@ -273,6 +273,43 @@
           }
         }
       },
+      "runoffprofile": {
+        "type": "object",
+        "description": "Shape a run-off into a smooth flat-bottomed channel with rounded sides. Edge verts stay fixed. Lake-group verts are lowered by lake_drop.",
+        "properties": {
+          "depth": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Depth of the flat bottom below the current edge height (metres)"
+          },
+          "side_radius": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": 0,
+            "description": "Rounded-side width from edge to flat bottom (metres). Flat-bottom width = mesh width - 2 * side_radius"
+          },
+          "lake_group": {
+            "type": "string",
+            "default": "RunoffLake",
+            "description": "Vertex group of lake-end vertices"
+          },
+          "lake_drop": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Extra lowering at the lake end (metres)"
+          },
+          "lake_reach": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Distance over which the lake-end lowering fades out (metres)"
+          },
+          "smooth_passes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Laplacian smoothing passes on interior verts"
+          }
+        }
+      },
       "markpaintexclude": {
         "type": "object",
         "description": "Automatically mark boundary vertices near exclusion meshes (e.g., Concrete). Must run as first entry before paint operations.",
