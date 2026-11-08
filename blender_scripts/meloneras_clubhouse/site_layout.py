@@ -142,7 +142,9 @@ def layout():
         M.append(line(tip, tip - D * sgn * 1.2 + Ap * 0.6, 0.25))
         M.append(line(tip, tip - D * sgn * 1.2 - Ap * 0.6, 0.25))
     # red picon planter west of row 1
-    feats["planters"].append({"kind": "picon", "poly": strip(w(1040, 528), w(885, 805), 1.8), "height": 0.2})
+    # (parallel to the aisles, just behind row 1's back line; the hand trace was ~3 deg skewed)
+    pc = S0 - Ap * 17.6
+    feats["planters"].append({"kind": "picon", "poly": strip(pc + D * -8.0, pc + D * 13.7, 1.8), "height": 0.2})
 
     # ---- herringbone cart/car bays either side of a palm spine (north-west of the main car park)
     H0, H1 = w(915, 515), w(822, 752)
