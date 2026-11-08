@@ -1,10 +1,10 @@
-"""Meloneras Golf Club: clubhouse and cart barn for GSPro (OPCD V4).
+"""Meloneras Golf Club: clubhouse, cart barn and starter's kiosk for GSPro (OPCD V4).
 
 Run inside Blender 4.5 with the course file open, or headless:
     blender.exe -b "H:\\Meloneras\\Support_Files\\Blender\\meloneras.blend" --python build_clubhouse.py
 
 What it does
-- Builds separate objects, MEL_Clubhouse and MEL_CartBarn, from the
+- Builds three separate objects, MEL_Clubhouse, MEL_CartBarn and MEL_StarterKiosk, from the
   dimensions in BUILDINGS (metres, local axes: +X along the building, +Y to its "back").
 - Places each at SITE[...] (Blender world XY + heading), finds the ground under its footprint
   by ray-casting the meshes in GROUND_OBJECTS (hidden ones too), sets the floor at the highest
@@ -46,6 +46,7 @@ except NameError:  # pasted into Blender's text editor / run over MCP
 SITE = {
     "MEL_Clubhouse": {"xy": None, "heading": 0.0},
     "MEL_CartBarn": {"xy": None, "heading": 0.0},
+    "MEL_StarterKiosk": {"xy": None, "heading": 0.0},
 }
 
 # material name -> (texture set folder, metres covered by one texture tile, flat colour fallback)
@@ -411,6 +412,26 @@ def build_cart_barn():
     return k, footprint
 
 
+def build_kiosk():
+    """Starter's kiosk (red). 3.6 m square timber hut, door on -Y, hatch on +X, pyramid roof."""
+    k = Kit("MEL_StarterKiosk")
+    T, TL = "MEL_Timber", "MEL_RoofTile"
+    h = 2.0
+    eave = 2.5
+    k.slab([(-h - 0.4, -h - 0.4, 0), (h + 0.4, -h - 0.4, 0), (h + 0.4, h + 0.4, 0), (-h - 0.4, h + 0.4, 0)], 0.15, "MEL_Concrete")
+    k.wall_with_openings("y", -h, -h, h, 0, eave, [(-0.45, 0.45, 0, 2.05, "door")], T, -1, thick=0.12)
+    k.wall_with_openings("x", h, -h, h, 0, eave, [(-0.8, 0.8, 1.0, 1.9, "glass")], T, +1, thick=0.12)
+    k.wall_with_openings("y", h, -h, h, 0, eave, [(-0.6, 0.6, 1.1, 1.9, "glass")], T, +1, thick=0.12)
+    k.wall_with_openings("x", -h, -h, h, 0, eave, [], T, -1, thick=0.12)
+    k.box(-0.45, 0.45, -h + 0.05, -h + 0.09, 0, 2.05, T, skip=("bottom",))         # door leaf, set in
+    k.box(0.55, 1.65, -h - 0.04, -h, 1.0, 1.25, "MEL_Steel")                       # notice board
+    k.box(h, h + 0.35, -0.85, 0.85, 0.95, 1.0, T)                                   # hatch counter
+    k.face([(-h, -h, eave), (h, -h, eave), (h, h, eave), (-h, h, eave)][::-1], "MEL_Interior")
+    k.pyramid_roof(0, 0, h + 0.5, eave - 0.5 * math.tan(math.radians(30)), eave + h * math.tan(math.radians(30)), 0.15, TL, T)
+    footprint = [(-h - 0.4, -h - 0.4), (h + 0.4, -h - 0.4), (h + 0.4, h + 0.4), (-h - 0.4, h + 0.4)]
+    return k, footprint
+
+
 # ------------------------------------------------------------------ terrain fit
 def ground_bvhs():
     dg = bpy.context.evaluated_depsgraph_get()
@@ -544,10 +565,10 @@ def main():
     cursor = bpy.context.scene.cursor.location
     layout = load_layout()
     for name, b in layout["buildings"].items():
-        if name in SITE and SITE[name]["xy"] is None:
+        if SITE[name]["xy"] is None:
             SITE[name]["xy"] = tuple(b["xy"])
             SITE[name]["heading"] = b["heading"]
-    for name, fn in (("MEL_Clubhouse", build_clubhouse), ("MEL_CartBarn", build_cart_barn)):
+    for name, fn in (("MEL_Clubhouse", build_clubhouse), ("MEL_CartBarn", build_cart_barn), ("MEL_StarterKiosk", build_kiosk)):
         site = SITE[name]
         xy = site["xy"] or (cursor.x, cursor.y)
         rot = math.radians(site["heading"])
