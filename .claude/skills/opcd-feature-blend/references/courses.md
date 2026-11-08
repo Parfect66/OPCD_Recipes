@@ -188,3 +188,24 @@ Leftovers in the scene: `CULVERT_C02_OUT` (stray, from an abandoned plan) and `C
 - [ ] Add C20 to `meloneras_culverts.py` (mouths above, `flow="as_bearing"`, barrel rises 0) and lower the Unity terrain under it (deepest at the entrance cutting).
 - [ ] Delete old `meloneras_1_pre-C*_01.blend` backup copies in `H:\Meloneras_Latest\Support Files\Blender\` once
   the user is happy (one per plan, incl. abandoned plans).
+
+### Meloneras clubhouse (8 Nov 2026)
+
+Not an opcd-feature-blend feature. Built by `blender_scripts/meloneras_clubhouse/` on the pad
+`Spline_path383_Concrete_-_Mesh` in `H:\Meloneras\Support_Files\Blender\meloneras.blend`
+(note `Support_Files`, underscore). Output, scripts, textures and previews are in
+`H:\Meloneras\Support_Files\Buildings\Clubhouse\`.
+
+| object | Blender XY | heading | floor_z (m) | tris |
+|---|---|---|---|---|
+| `MEL_Clubhouse` | (-1336.05, -971.72) | 150.8° | 50.22 | 1,489 |
+| `MEL_CartBarn` | (-1323.05, -983.58) | -119.2° | 50.68 | 298 |
+| `MEL_StarterKiosk` | (-1351.83, -987.24) | 150.8° | 49.93 | 162 |
+| `MEL_CarParkMarkings` | origin (-1357.80, -964.93, 49.46) | | | 924 |
+| `MEL_Planters` | same origin | | | 548 |
+
+- Layout traced from a Google aerial and registered with a similarity fit (about 2 m).
+- Each object is exported twice: `<name>.fbx` (pivot at the object) and `<name>_world.fbx`
+  (course coordinates). Blender → Unity is (−x, z, −y), yaw_u = −yaw_b.
+- Open: `LIB_Meloneras_StarterHut` (already in the course) overlaps `MEL_StarterKiosk` by
+  about 2.9 m; drop one of them.
