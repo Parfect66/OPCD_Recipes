@@ -7,7 +7,7 @@ Builds the Meloneras Golf Club clubhouse complex onto the course pad
 |---|---|
 | `MEL_Clubhouse` | main hall (open gables, glazed terrace front), east restaurant wing, west service wing, terrace with pergola, glass screens and hedge |
 | `MEL_CartBarn` | 42 × 6 m open-fronted cart barn, stone back wall, boundary wall behind |
-| `MEL_StarterKiosk` | 4 m timber starter's kiosk with a tiled pyramid roof |
+| (starter's hut) | not built: the course already has `LIB_Meloneras_StarterHut` |
 | `MEL_CarParkMarkings` | bay lines, disabled bays, arrows, herringbone and angled cart bays (lifted 0.02 m) |
 | `MEL_Planters` | red picón planters, light gravel islands, central walkway, hedge planter |
 

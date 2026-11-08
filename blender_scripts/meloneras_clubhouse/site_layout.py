@@ -107,8 +107,7 @@ def layout():
     barn_x = perp_ccw(A)                         # A turned 90 deg anticlockwise -> NNE; open front (-Y) faces ESE
     feats["buildings"]["MEL_Clubhouse"] = {"xy": list(w(401, 572)), "heading": heading(club_x)}
     feats["buildings"]["MEL_CartBarn"] = {"xy": list(w(213, 396)), "heading": heading(barn_x)}
-    feats["buildings"]["MEL_StarterKiosk"] = {"xy": list(w(635, 348)), "heading": heading(club_x),
-                                              "note": "from the aerial; the existing LIB_Meloneras_StarterHut sits about 2 m south"}
+    # The starter's hut is the existing LIB_Meloneras_StarterHut in the course; not built here.
 
     M = []  # marking quads
 
