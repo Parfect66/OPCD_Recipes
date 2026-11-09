@@ -763,12 +763,14 @@ def render_previews(coll):
 
 
 # ------------------------------------------------------------------ export
-def copy_textures():
+def copy_textures(coll):
     """Copy every texture set the build uses into EXPORT_DIR\\Textures and repoint the images,
     so the FBX files reference textures that sit beside them."""
     tex_out = os.path.join(EXPORT_DIR, "Textures")
     done = set()
-    for im in bpy.data.images:
+    used = {n.image for ob in coll.objects for slot in ob.material_slots if slot.material and slot.material.node_tree
+            for n in slot.material.node_tree.nodes if n.type == "TEX_IMAGE" and n.image}
+    for im in used:
         src = bpy.path.abspath(im.filepath)
         if not src or not os.path.isfile(src):
             continue
@@ -791,7 +793,7 @@ def copy_textures():
 
 def export_all(coll):
     os.makedirs(EXPORT_DIR, exist_ok=True)
-    copy_textures()
+    copy_textures(coll)
     shutil.copy2(os.path.join(OUT_DIR, "placement.json"), os.path.join(EXPORT_DIR, "placement.json"))
     for ob in coll.objects:
         bpy.ops.object.select_all(action="DESELECT")
