@@ -45,6 +45,10 @@ PLINTH_BELOW_GROUND = 0.30  # m: walls run this far below the lowest ground poin
 RENDER_PREVIEWS = True
 EXPORT = False
 SEED = 33
+PLOT_OBJECT = None          # course mesh the houses must stay inside (the walled plot); None = auto
+PLOT_MARGIN = 0.30          # m: walls and eaves stay this far inside the plot edge (boundary wall)
+HOUSE_GAP = 0.10            # m: gap kept between neighbouring houses
+MIN_SIDE = 2.5              # m: a house squeezed below this is dropped
 ENGINES = ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE")  # first that exists is used
 
 # pixel (x right, y down) -> course metres east/north of the terrain origin:  en = A*conj(p) + B
@@ -384,7 +388,7 @@ def flat_block(k, x0, x1, y0, y1, z0, h, wall, rng, front, tiles=False, clutter=
         k.box(xa, min(x1 - t, xa + (x1 - x0) * 0.5), ya, yb, zr, zr + rng.uniform(0.8, 1.4), "MDA_Blockwork")
 
 
-def mono_roof(k, x0, x1, y0, y1, zf, zb, mat, front, eave=0.25):
+def mono_roof(k, x0, x1, y0, y1, zf, zb, mat, front, eave=0.15):
     """Low corrugated roof falling from the front edge (zf) to the back (zb)."""
     t = 0.06
     if front in ("s", "n"):
@@ -464,7 +468,7 @@ def build_house(k, fid, L, W, kind, storeys, front, rng, plinth):
     else:  # shack: block base, shade-net sides, corrugated roof, a white garage-type door
         hf, hb = rng.uniform(2.3, 2.6), rng.uniform(2.0, 2.2)
         sloped_walls(k, x0, x1, y0, y1, -plinth, hf, hb, front, "MDA_Blockwork", "MDA_ShadeNet", split=1.0)
-        mono_roof(k, x0, x1, y0, y1, hf + 0.05, hb + 0.05, rng.choice(["MDA_CorrugatedGreen", "MDA_CorrugatedWhite"]), front, eave=0.15)
+        mono_roof(k, x0, x1, y0, y1, hf + 0.05, hb + 0.05, rng.choice(["MDA_CorrugatedGreen", "MDA_CorrugatedWhite"]), front, eave=0.10)
         span = L if front in ("s", "n") else W
         door(k, front, -span / 4, L, W, "MDA_DoorWhite", w=min(2.0, span / 2.5), h=1.95)
 
@@ -486,6 +490,77 @@ def ground_z(scene, dg, x, y):
             terrain = loc.z
         origin = loc - Vector((0, 0, 0.01))
     return terrain
+
+
+def ground_hit(scene, dg, x, y):
+    """First course-mesh hit straight down: (z, object name) or (None, None)."""
+    origin = Vector((x, y, 1000.0))
+    for _ in range(12):
+        hit, loc, _n, _i, ob, _m = scene.ray_cast(dg, origin, Vector((0, 0, -1)))
+        if not hit:
+            break
+        if ob.name.endswith(GROUND_SUFFIX):
+            return loc.z, ob.name
+        origin = loc - Vector((0, 0, 0.01))
+    return None, None
+
+
+class Rect:
+    """Footprint with independent extents along its axes: x in [-l0, l1] along a, y in [-w0, w1] along b."""
+
+    def __init__(self, centre, a, b, L, W):
+        self.c, self.a, self.b = centre.copy(), a.copy(), b.copy()
+        self.l0 = self.l1 = L / 2
+        self.w0 = self.w1 = W / 2
+
+    def local(self, p):
+        d = p - self.c
+        return d.dot(self.a), d.dot(self.b)
+
+    def contains(self, p, grow=0.0):
+        x, y = self.local(p)
+        return -self.l0 - grow < x < self.l1 + grow and -self.w0 - grow < y < self.w1 + grow
+
+    def side_points(self, side, grow, step=0.5):
+        if side in ("l0", "l1"):
+            x = -self.l0 - grow if side == "l0" else self.l1 + grow
+            ys = (-self.w0 - grow, self.w1 + grow)
+            n = max(2, int((ys[1] - ys[0]) / step) + 1)
+            return [self.c + self.a * x + self.b * (ys[0] + (ys[1] - ys[0]) * i / (n - 1)) for i in range(n)]
+        y = -self.w0 - grow if side == "w0" else self.w1 + grow
+        xs = (-self.l0 - grow, self.l1 + grow)
+        n = max(2, int((xs[1] - xs[0]) / step) + 1)
+        return [self.c + self.b * y + self.a * (xs[0] + (xs[1] - xs[0]) * i / (n - 1)) for i in range(n)]
+
+    def final(self):
+        """Centre, L and W after the sides moved."""
+        L, W = self.l0 + self.l1, self.w0 + self.w1
+        c = self.c + self.a * ((self.l1 - self.l0) / 2) + self.b * ((self.w1 - self.w0) / 2)
+        return c, L, W
+
+
+def fit_rect(rect, inside, others, step=0.25, max_iter=80):
+    """Pull each side in until its edge (grown by the margin) is inside the plot and clear of the
+    houses already placed. Returns False if the house had to shrink below MIN_SIDE."""
+    for _ in range(max_iter):
+        moved = False
+        for side in ("l0", "l1", "w0", "w1"):
+            bad = False
+            for p in rect.side_points(side, PLOT_MARGIN):
+                if not inside(p):
+                    bad = True; break
+            if not bad:
+                for p in rect.side_points(side, HOUSE_GAP / 2):
+                    if any(o.contains(p, HOUSE_GAP / 2) for o in others):
+                        bad = True; break
+            if bad:
+                setattr(rect, side, getattr(rect, side) - step)
+                moved = True
+        if rect.l0 + rect.l1 < MIN_SIDE or rect.w0 + rect.w1 < MIN_SIDE:
+            return False
+        if not moved:
+            return True
+    return True
 
 
 def sample(scene, dg, centre, a, b, L, W, step=1.0):
@@ -516,9 +591,45 @@ def main():
     dg = bpy.context.evaluated_depsgraph_get()
     streets = street_points()
 
+    # the walled plot: the course mesh under most footprint centres, unless named
+    frames = {f[0]: footprint_frame(f[2], f[3], f[4], f[5]) for f in FOOTPRINTS}
+    plot = PLOT_OBJECT
+    if plot is None:
+        counts = {}
+        for centre, a, b, Lm, Wm in frames.values():
+            for du in (-0.3, 0.0, 0.3):
+                for dv in (-0.3, 0.0, 0.3):
+                    _z, name = ground_hit(scene, dg, *(centre + a * Lm * du + b * Wm * dv))
+                    if name:
+                        counts[name] = counts.get(name, 0) + 1
+        plot = max(counts, key=counts.get) if counts else None
+        print("ground under the footprints:", sorted(counts.items(), key=lambda kv: -kv[1])[:6])
+    print("plot mesh:", plot)
+
+    def inside(p):
+        return plot is None or ground_hit(scene, dg, p.x, p.y)[1] == plot
+
+    placed, dropped, fitted = [], [], {}
+    for f in FOOTPRINTS:
+        centre, a, b, Lm, Wm = frames[f[0]]
+        if not inside(centre):
+            dropped.append(f[0]); continue
+        r = Rect(centre, a, b, Lm, Wm)
+        if not fit_rect(r, inside, placed):
+            dropped.append(f[0]); continue
+        placed.append(r)
+        c2, L2, W2 = r.final()
+        fitted[f[0]] = (c2, a, b, L2, W2)
+        if abs(L2 - Lm) > 0.05 or abs(W2 - Wm) > 0.05:
+            print(f"{f[0]}: trimmed {Lm:.1f} x {Wm:.1f} -> {L2:.1f} x {W2:.1f} m")
+    if dropped:
+        print("dropped (outside the plot or squeezed out):", dropped)
+
     plan = {}
     for fid, grp, c, L, W, axis, kind, storeys in FOOTPRINTS:
-        centre, a, b, Lm, Wm = footprint_frame(c, L, W, axis)
+        if fid not in fitted:
+            continue
+        centre, a, b, Lm, Wm = fitted[fid]
         zs = sample(scene, dg, centre, a, b, Lm, Wm)
         if not zs:
             print("no ground under", fid); zs = [0.0]
@@ -562,6 +673,7 @@ def main():
                           for fid, v in items.items()},
         }
         print(gname, {kk: vv for kk, vv in report[gname].items() if kk != "buildings"})
+    report["_plot"] = {"mesh": plot, "dropped": dropped}
     os.makedirs(OUT_DIR, exist_ok=True)
     with open(os.path.join(OUT_DIR, "placement.json"), "w") as f:
         json.dump(report, f, indent=2)
