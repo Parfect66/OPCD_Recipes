@@ -22,12 +22,13 @@ What it does
   MDA_RoadWest, MDA_SouthEast), each with its pivot at the group's centre at ground level.
 - RENDER_PREVIEWS: renders four views into OUT_DIR\\Previews.
 - EXPORT: writes <name>.fbx (pivot on the object), <name>_world.fbx (course coordinates),
-  placement.json and MarDeAzor.blend into OUT_DIR. Blender -> Unity is (-x, z, -y).
+  placement.json, MarDeAzor.blend and Textures\\<set> into EXPORT_DIR. Blender -> Unity is (-x, z, -y).
 """
 import json
 import math
 import os
 import random
+import shutil
 
 import bmesh
 import bpy
@@ -42,8 +43,9 @@ TEXTURE_ROOTS = [
 ]
 FLOOR_ABOVE_GROUND = 0.10   # m over the highest ground point under the footprint
 PLINTH_BELOW_GROUND = 0.30  # m: walls run this far below the lowest ground point
-RENDER_PREVIEWS = True
-EXPORT = False
+EXPORT_DIR = r"H:\Meloneras\Meloneras_Golf_Club_v4_2025_12_02\Assets\Buildings\Mar de Azor"
+RENDER_PREVIEWS = False
+EXPORT = True
 SEED = 33
 PLOT_OBJECT = None          # course mesh the houses must stay inside (the walled plot); None = auto
 PLOT_MARGIN = 0.30          # m: walls and eaves stay this far inside the plot edge (boundary wall)
@@ -761,7 +763,36 @@ def render_previews(coll):
 
 
 # ------------------------------------------------------------------ export
+def copy_textures():
+    """Copy every texture set the build uses into EXPORT_DIR\\Textures and repoint the images,
+    so the FBX files reference textures that sit beside them."""
+    tex_out = os.path.join(EXPORT_DIR, "Textures")
+    done = set()
+    for im in bpy.data.images:
+        src = bpy.path.abspath(im.filepath)
+        if not src or not os.path.isfile(src):
+            continue
+        folder = os.path.dirname(src)
+        name = os.path.basename(folder)
+        dst_dir = os.path.join(tex_out, name)
+        if folder not in done:
+            os.makedirs(dst_dir, exist_ok=True)
+            for f in os.listdir(folder):
+                if f.lower().endswith(".png"):
+                    shutil.copy2(os.path.join(folder, f), os.path.join(dst_dir, f))
+            done.add(folder)
+        im.filepath = os.path.join(dst_dir, os.path.basename(src))
+    for root in TEXTURE_ROOTS[:1]:
+        txt = os.path.join(root, "SOURCES.txt")
+        if os.path.isfile(txt):
+            shutil.copy2(txt, os.path.join(tex_out, "SOURCES.txt"))
+    print("textures copied:", sorted(os.path.basename(d) for d in done))
+
+
 def export_all(coll):
+    os.makedirs(EXPORT_DIR, exist_ok=True)
+    copy_textures()
+    shutil.copy2(os.path.join(OUT_DIR, "placement.json"), os.path.join(EXPORT_DIR, "placement.json"))
     for ob in coll.objects:
         bpy.ops.object.select_all(action="DESELECT")
         ob.select_set(True)
@@ -770,14 +801,14 @@ def export_all(coll):
                       apply_scale_options="FBX_SCALE_ALL", axis_forward="-Z", axis_up="Y",
                       bake_space_transform=True, mesh_smooth_type="FACE", use_mesh_modifiers=True,
                       path_mode="RELATIVE", embed_textures=False, add_leaf_bones=False)
-        bpy.ops.export_scene.fbx(filepath=os.path.join(OUT_DIR, ob.name + ".fbx"), **common)
+        bpy.ops.export_scene.fbx(filepath=os.path.join(EXPORT_DIR, ob.name + ".fbx"), **common)
         saved = ob.matrix_world.copy()
         ob.data.transform(saved)
         ob.matrix_world = Matrix.Identity(4)
-        bpy.ops.export_scene.fbx(filepath=os.path.join(OUT_DIR, ob.name + "_world.fbx"), **common)
+        bpy.ops.export_scene.fbx(filepath=os.path.join(EXPORT_DIR, ob.name + "_world.fbx"), **common)
         ob.data.transform(saved.inverted())
         ob.matrix_world = saved
-    bpy.data.libraries.write(os.path.join(OUT_DIR, "MarDeAzor.blend"), set(coll.objects), fake_user=True,
+    bpy.data.libraries.write(os.path.join(EXPORT_DIR, "MarDeAzor.blend"), set(coll.objects), fake_user=True,
                              path_remap="RELATIVE_ALL")
 
 

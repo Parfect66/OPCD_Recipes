@@ -24,9 +24,10 @@ behind the 1st and 4th greens. Background scenery, so the detail level is modest
 ```
 blender.exe -b "H:\Meloneras\Support_Files\Blender\meloneras.blend" --python "H:\Meloneras\Support_Files\Buildings\MarDeAzor\Scripts\build_mar_de_azor.py"
 ```
-`RENDER_PREVIEWS` writes five views into `OUT_DIR\Previews`. `EXPORT` writes `<name>.fbx`
-(pivot on the object), `<name>_world.fbx` (course coordinates, place at 0,0,0),
-`placement.json` and `MarDeAzor.blend`. The course file is never saved.
+`RENDER_PREVIEWS` writes five views into `OUT_DIR\Previews`. `EXPORT` writes into
+`EXPORT_DIR` (`Assets\Buildings\Mar de Azor`): `<name>.fbx` (pivot on the object),
+`<name>_world.fbx` (course coordinates, place at 0,0,0), `placement.json`, `MarDeAzor.blend`
+and a copy of every texture set used under `Textures\<set>`. The course file is never saved.
 Blender → Unity is (−x, z, −y), yaw_u = −yaw_b.
 
 ## Textures
